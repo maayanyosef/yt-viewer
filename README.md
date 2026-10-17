@@ -66,12 +66,10 @@ The app uses YouTube's public APIs with a key that you create yourself.
 The app is not in the Google Play Store.
 You install it with a free app called **Downloader by AFTVnews**.
 
-> **Download code and address: TO BE FILLED IN.**
+> - Downloader code: `5623701`
+> - Download address: `https://github.com/yt-viewer/yt-viewer/releases/latest/download/yt-viewer.apk`
 >
-> - Downloader code: `<DOWNLOADER-CODE>`
-> - Download address: the newest APK on the Releases page, `https://github.com/yt-viewer/yt-viewer/releases`
->
-> The Downloader code is added when the release APK is published.
+> Both always give the newest release, so the same code also installs an update.
 
 ### 3.1 Turn on developer mode on the television
 
