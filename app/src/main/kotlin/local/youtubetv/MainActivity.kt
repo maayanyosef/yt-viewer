@@ -580,8 +580,9 @@ class MainActivity : ComponentActivity() {
         // its version number.
         val database = YouTubeTvDatabase(this)
         // The one store, built before the log, because the log writes one column of the video
-        // cache: a `played` entry ends the Newly listed state of everything at or past the
-        // video played. One helper means one transaction covers both tables. Ticket 40.
+        // cache: an ordinary `played` entry ends the Newly listed state of everything at or
+        // past the video played. A Shuffle play does not: see build ticket 72, "A Shuffle play never ends Newly listed".
+        // One helper means one transaction covers both tables. Ticket 40.
         sources = SqliteSourceStore(database)
         watches = WatchLog(SqliteWatchStore(database), sources)
         walk = SourceWalk(api)
@@ -1504,7 +1505,9 @@ class MainActivity : ComponentActivity() {
             log = { line -> Log.i(LOG_TAG, line) },
             // The card behind the player already carries its green tick and its red In
             // progress bar by the time the household is back on the grid.
-            onWatchState = { state -> model.applyWatchState(state, shufflePlay) },
+            // The Shuffle mark comes from the play the log wrote, so the screen and storage
+            // cannot disagree about the Newly listed flags.
+            onWatchState = { state, byShuffle -> model.applyWatchState(state, byShuffle) },
         )
         currentSession = session
 

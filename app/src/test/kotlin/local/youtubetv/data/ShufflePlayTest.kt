@@ -170,18 +170,4 @@ class ShufflePlayTest {
         assertEquals("v6", nextUnwatched(videos))
         assertEquals(DERIVATION_VERSION, store.storedDerivationVersion())
     }
-
-    @Test
-    fun `a Shuffle play ends Newly listed like any play, by the glossary's own rule`() {
-        val sources = InMemorySourceStore()
-        sources.saveSource(StoredSource("UUx", title = null, lastWalkedAt = null))
-        val newest = testVideo("new", day = 30, newlyListed = true)
-        val older = testVideo("old", day = 10)
-        sources.replaceVideos("UUx", listOf(newest, older))
-        val withSources = WatchLog(InMemoryWatchStore(), sources)
-
-        withSources.startPlay(older, positionSeconds = 20, completed = false, shuffle = true)
-
-        assertFalse(sources.listedVideos("UUx").single { it.videoId == "new" }.newlyListed)
-    }
 }

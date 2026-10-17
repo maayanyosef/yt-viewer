@@ -799,12 +799,14 @@ class SourceScreenModel(
         // ticks, on the main thread, and a SQLite read there is a dropped frame.
         val played = state.positionSeconds != null &&
             current.videos.any { it.videoId == state.videoId }
-        // A play ends the Newly listed state of the video played and of everything at or past
-        // it, and `WatchLog.startPlay` has already done that in storage. Doing it here too is
+        // An ordinary play ends the Newly listed state of the video played and of everything at
+        // or past it, and `WatchLog.startPlay` has already done that in storage. A Shuffle play
+        // ends nothing, here or in storage: build ticket 72, "A Shuffle play never ends Newly listed".
+        // [shufflePlay] is the mark the log wrote on the play, so the two agree. Doing it here is
         // what keeps this screen and the home rail saying the same thing: the rail rebuilds
         // from storage, so without this the screen would go on offering a video the rail has
         // already dropped. Build ticket 40, and the `/code-review high` of 2026-09-21.
-        val stillNewlyListed = if (played) {
+        val stillNewlyListed = if (played && !shufflePlay) {
             val publishedAt = current.videos.firstOrNull { it.videoId == state.videoId }
                 ?.videoPublishedAt
             clearedNewlyListed(current.videos, current.direction, publishedAt)

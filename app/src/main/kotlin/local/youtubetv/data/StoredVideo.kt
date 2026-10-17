@@ -31,8 +31,9 @@ import java.time.Instant
  *   rule cannot be applied without it.
  * @property videoPublishedAt the date a `range` is compared against, and the order the rail
  *   reads in. Null means private or deleted, which no range can cover.
- * @property newlyListed whether a walk has only just listed this video, and the household has
- *   played nothing at or past it since. See [StoredVideo.newlyListed], which is where the whole
+ * @property newlyListed whether a walk has only just listed this video, and no ordinary play at
+ *   or past it has happened since. A Shuffle play never clears it, so a flagged video may have
+ *   Shuffle plays past it, or be watched by one. See [StoredVideo.newlyListed], which is where the whole
  *   of what it means is written down. It is here, on the narrow read as well, because the rail
  *   works out the badge and the Next unwatched slot from these rows alone: a card that could
  *   not see the flag would disagree with the Source screen, which is the one thing ticket 23
@@ -108,6 +109,8 @@ data class StoredVideo(
      *   first walk after the video tables are rebuilt.
      * - `SourceStore.clearNewlyListedUpTo` clears it, from the two places in `WatchLog` that
      *   append a `played` entry. A Bulk mark does not clear it, on purpose: see ticket 40.
+     *   A Shuffle play does not clear it either, not even on the video played: see
+     *   build ticket 72, "A Shuffle play never ends Newly listed".
      *
      * **A flag and not a date.** A date would have to be compared against the time of the last
      * Watch, and `WatchDerivation.kt` forbids that: an Android TV can boot with a wrong clock,

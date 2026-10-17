@@ -43,7 +43,7 @@ The furthest the household has worked along a Source: the highest index, in that
 _Avoid_: Last watched, watermark, progress point, furthest point
 
 **Newly listed**:
-A video a walk listed for the first time, with no play at or past it in that Source since. It is about when the app first saw the video, never about when YouTube published it. In a newest-first Source it is offered as Next unwatched even though it sits above the high-water mark, because the household never had the chance to skip it. Playing a video at or past it ends this, and it becomes an ordinary skipped video. An oldest-first Source needs no exception: a new video already arrives after the mark.
+A video a walk listed for the first time, with no ordinary play at or past it in that Source since. It is about when the app first saw the video, never about when YouTube published it. In a newest-first Source it is offered as Next unwatched even though it sits above the high-water mark, because the household never had the chance to skip it. An ordinary play of a video at or past it ends this, and it becomes an ordinary skipped video. A Shuffle play never ends it, so a Newly listed video stays offered until it is watched or an ordinary play reaches or passes it. An oldest-first Source needs no exception: a new video already arrives after the mark.
 _Avoid_: New, unseen, fresh, recent, newly published
 
 **Bulk mark**:
@@ -67,7 +67,7 @@ One pass of Shuffle through a Source, in which every playable video plays once b
 _Avoid_: Session, shuffle session, playlist, queue
 
 **Shuffle play**:
-A play that Shuffle chose, rather than a card the household pressed. It leaves a Watch and moves Last played like any play, but never moves the High-water mark, so Next unwatched keeps the household's place. A card pressed by hand while Shuffle is on is an ordinary play.
+A play that Shuffle chose, rather than a card the household pressed. It leaves a Watch and moves Last played like any play, but never moves the High-water mark and never ends Newly listed, so Next unwatched keeps the household's place. A card pressed by hand while Shuffle is on is an ordinary play.
 _Avoid_: Random play, shuffled watch
 
 **API key**:

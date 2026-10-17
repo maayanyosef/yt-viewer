@@ -15,8 +15,9 @@ import java.time.Instant
  * - **The derived table is disposable.** It is only ever what [deriveWatchStates] returns,
  *   written down, so throwing it away costs nothing but the time to build it again.
  *
- * @param sources the video cache, which a `played` entry also writes one column of: it ends
- *   the **Newly listed** state of the video played and of everything at or past it. See
+ * @param sources the video cache, which an ordinary `played` entry also writes one column of:
+ *   it ends the **Newly listed** state of the video played and of everything at or past it. A
+ *   Shuffle play writes nothing here: see build ticket 72, "A Shuffle play never ends Newly listed". See
  *   [SourceStore.clearNewlyListedUpTo] and build ticket 40. It is the same
  *   [YouTubeTvDatabase] file, so the write lands inside the transaction the log already
  *   opened; `MainActivity` hands in the one [SqliteSourceStore] the whole app shares.
@@ -248,16 +249,20 @@ class WatchLog(
                 ),
                 at = now(),
             )
-            // This is a real play, so every video at or past it stops being Newly listed. A
+            // An ordinary play ends the Newly listed state of every video at or past it. A
             // Newly listed video the household has now moved past becomes an ordinary skipped
             // video, and is never offered again. Build ticket 40.
             //
-            // **A Shuffle play does this too.** Build ticket 69 asked whether it should, and
-            // the answer is the glossary's own rule: Newly listed ends at "a play at or past
-            // it", and a Shuffle play is a play. Only the High-water mark ignores it, because
-            // ADR 0002 names that and nothing else. The ticket's closing notes say what this
-            // costs a newest-first Source.
-            clearNewlyListedFrom(video)
+            // **A Shuffle play never does.** Shuffle is a detour that never costs the
+            // household its place (ADR 0002), and a video it never saw is part of that place.
+            // In a newest-first Source a Newly listed video sits at the top, so nearly every
+            // Shuffle play is past it, and clearing here retired it after one random pick.
+            // Build ticket 72, "A Shuffle play never ends Newly listed", reversed the first
+            // reading of build ticket 69, "Shuffle: play a Source in random order".
+            //
+            // A Shuffle play of the Newly listed video itself leaves its flag set as well. The
+            // flag then stops mattering, because the video carries a Watch and so is not a gap.
+            if (!shuffle) clearNewlyListedFrom(video)
             store.keepVideo(
                 KeptVideo(
                     videoId = video.videoId,
@@ -313,9 +318,10 @@ class WatchLog(
     /**
      * Ends the **Newly listed** state of this video and of everything at or past it.
      *
-     * Called from the two places that append a `played` entry, and from nowhere else. Both
-     * hold the whole [StoredVideo], so both have the Source id and the publish date the rule
-     * needs. The side is the Source's own Direction, which the store reads for itself.
+     * Called from the two places that append a `played` entry, and from nowhere else. It is
+     * never called for a Shuffle play: see build ticket 72, "A Shuffle play never ends Newly listed".
+     * Both callers hold the whole [StoredVideo], so both have the Source id and the publish date
+     * the rule needs. The side is the Source's own Direction, which the store reads for itself.
      *
      * It runs inside the transaction the caller already opened, because the video cache and
      * the Watch log are tables of one [YouTubeTvDatabase] file and `MainActivity` builds one

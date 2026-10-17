@@ -154,6 +154,87 @@ class SourceScreenNewlyListedTest {
     }
 
     @Test
+    fun `a Shuffle play clears no flag, on either side`() {
+        // Build ticket 72, "A Shuffle play never ends Newly listed". Newest first, an ordinary
+        // play of `oldest` would end both flags.
+        val (model, _) = ready()
+
+        val play = watches.startPlay(
+            videoOn(model, "oldest"),
+            positionSeconds = 30,
+            completed = false,
+            shuffle = true,
+        )!!
+        model.applyWatchState(play.state, shufflePlay = true)
+
+        assertEquals(setOf("newest", "middle"), onTheScreen(model))
+        screenAgreesWithStorage(model)
+        // It is still a play: it moves Last played.
+        assertEquals("oldest", stateOf(model).lastPlayedVideoId)
+    }
+
+    /**
+     * The behaviour build ticket 72, "A Shuffle play never ends Newly listed", exists for, read
+     * where the household reads it: the screen's own Next unwatched. The household has worked
+     * down to `d5` by an ordinary play written before the walk listed `newest`, so `d5` is the
+     * High-water mark and the exception offers `newest`.
+     */
+    @Test
+    fun `after a Shuffle play below it the screen still offers the Newly listed video`() {
+        val listed = listOf(testVideo("newest", day = 9, sourceId = SOURCE, newlyListed = true)) +
+            (5 downTo 1).map { testVideo("d$it", day = it, sourceId = SOURCE) }
+        store.saveSource(
+            StoredSource(SOURCE, title = null, lastWalkedAt = WALKED_AT, direction = Direction.NEWEST_FIRST),
+        )
+        store.replaceVideos(SOURCE, listed)
+        watchStore.append(
+            kind = local.youtubetv.data.WatchKind.PLAYED,
+            payload = local.youtubetv.data.playedPayload("d5", SOURCE, 40, completed = true),
+            at = PLAYED_AT.minusSeconds(3600),
+        )
+        val model = model()
+        runBlocking { model.load() }
+        assertEquals("newest", screenNextUnwatched(model))
+
+        val play = watches.startPlay(
+            videoOn(model, "d2"),
+            positionSeconds = 30,
+            completed = false,
+            shuffle = true,
+        )!!
+        model.applyWatchState(play.state, shufflePlay = play.shuffle)
+
+        assertEquals("newest", screenNextUnwatched(model))
+        screenAgreesWithStorage(model)
+        val d2 = stateOf(model).watches.getValue("d2")
+        assertTrue(d2.watched)
+        assertEquals(false, d2.countsForHighWaterMark)
+    }
+
+    /** Where the screen's `Next unwatched` chip lands, by the screen's own state. */
+    private fun screenNextUnwatched(model: SourceScreenModel): String? {
+        val ready = stateOf(model)
+        return local.youtubetv.data.nextUnwatchedIndex(ready.videos, ready.watches, ready.direction)
+            ?.let { ready.videos[it].videoId }
+    }
+
+    @Test
+    fun `a Shuffle play of a Newly listed video leaves its own flag, on either side`() {
+        val (model, _) = ready()
+
+        val play = watches.startPlay(
+            videoOn(model, "middle"),
+            positionSeconds = 30,
+            completed = false,
+            shuffle = true,
+        )!!
+        model.applyWatchState(play.state, shufflePlay = true)
+
+        assertEquals(setOf("newest", "middle"), onTheScreen(model))
+        screenAgreesWithStorage(model)
+    }
+
+    @Test
     fun `Mark as watched clears the flag on the screen as well as in storage`() {
         val (model, _) = ready()
 

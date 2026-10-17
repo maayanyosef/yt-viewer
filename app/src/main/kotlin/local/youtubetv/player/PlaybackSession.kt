@@ -54,7 +54,9 @@ data class PlaybackUi(
  *   the player exists.
  * @param onWatchState called whenever this video's derived row changes, so the card behind the
  *   player already carries its green tick and its red In progress bar when the household gets
- *   back to the grid.
+ *   back to the grid. The second argument is the Shuffle mark the log wrote on the play, taken
+ *   from [PlayInProgress.shuffle], so the screen applies the decision storage already made
+ *   rather than a second copy of it. Build ticket 72, "A Shuffle play never ends Newly listed".
  */
 class PlaybackSession(
     val video: StoredVideo,
@@ -67,7 +69,7 @@ class PlaybackSession(
      */
     private val shuffle: Boolean = false,
     private val log: (String) -> Unit = {},
-    private val onWatchState: (WatchState) -> Unit = {},
+    private val onWatchState: (state: WatchState, shufflePlay: Boolean) -> Unit = { _, _ -> },
 ) {
 
     private val mutableState = MutableStateFlow(
@@ -320,7 +322,7 @@ class PlaybackSession(
             play = started
             lastWrittenSeconds = position
             mutableState.value = mutableState.value.copy(started = true)
-            onWatchState(started.state)
+            onWatchState(started.state, started.shuffle)
             log(
                 "Play of ${video.videoId} passed $PLAY_THRESHOLD_SECONDS s: " +
                     "one played entry written at ${clock(position)}" +
@@ -337,7 +339,7 @@ class PlaybackSession(
         val updated = watches.updatePlay(open, video, position, isCompleted) ?: return
         play = updated
         lastWrittenSeconds = position
-        onWatchState(updated.state)
+        onWatchState(updated.state, updated.shuffle)
         log(
             "Position of ${video.videoId} saved at ${clock(position)}" +
                 if (isCompleted) ", completed." else ".",

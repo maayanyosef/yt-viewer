@@ -371,6 +371,7 @@ What does not change:
 
 - The grid stays in the Source's Direction.
 - **Next unwatched** keeps your place. A video that Shuffle chose never moves it forward.
+- A new video at the top of a newest-first Source stays your Next unwatched while Shuffle plays other videos.
 - A video Shuffle played still counts as watched, and it becomes your Last played.
 
 **The Shuffle run.**

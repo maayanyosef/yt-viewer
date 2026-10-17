@@ -411,7 +411,9 @@ class NewlyListedRailCardTest {
 }
 
 /**
- * What ends the Newly listed state: a `played` entry, and nothing else.
+ * What ends the Newly listed state: an ordinary `played` entry, and nothing else. A `played`
+ * entry with the Shuffle mark ends nothing: see `ShuffleNewlyListedTest` and
+ * build ticket 72, "A Shuffle play never ends Newly listed".
  *
  * The rule is [SourceStore.clearNewlyListedUpTo] and the two callers are in [WatchLog]. The
  * store here is [InMemorySourceStore], which applies the same two date tests

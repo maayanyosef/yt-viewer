@@ -335,12 +335,35 @@ class PlaybackSessionTest {
         val session = PlaybackSession(
             video = video,
             watches = watches,
-            onWatchState = { told += 1 },
+            onWatchState = { _, _ -> told += 1 },
         )
         session.playTo(12)
         assertEquals(1, told)
         session.playTo(30)
         assertEquals(2, told)
+    }
+
+    @Test
+    fun `the card is told the Shuffle mark the log wrote on the play`() {
+        // Build ticket 72, "A Shuffle play never ends Newly listed". The screen keeps the
+        // Newly listed flags only when storage did, so it must hear the log's own answer.
+        val told = mutableListOf<Boolean>()
+        val shuffled = PlaybackSession(
+            video = video,
+            watches = watches,
+            shuffle = true,
+            onWatchState = { _, byShuffle -> told += byShuffle },
+        )
+        shuffled.playTo(12)
+        shuffled.playTo(30)
+        val ordinary = PlaybackSession(
+            video = video,
+            watches = watches,
+            onWatchState = { _, byShuffle -> told += byShuffle },
+        )
+        ordinary.playTo(12)
+
+        assertEquals(listOf(true, true, false), told)
     }
 
     @Test
