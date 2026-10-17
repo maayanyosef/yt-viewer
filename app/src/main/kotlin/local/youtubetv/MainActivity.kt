@@ -402,8 +402,9 @@ class MainActivity : ComponentActivity() {
      *
      * - Up to Android 14 the press is an ordinary `KEYCODE_BACK` key event, which
      *   [dispatchKeyEvent] takes while a video is on screen.
-     * - From **Android 15 (API 35)**, for an app targeting 35 or later, and this app targets
-     *   36, predictive back is on by default. The system calls an `OnBackInvokedCallback`
+     * - From **Android 16 (API 36)**, for an app targeting 36 or later, and this app targets
+     *   36, predictive back is on by default. Android documents it so. Only API 34 and API 36
+     *   were measured, by build ticket 54. The system calls an `OnBackInvokedCallback`
      *   instead, which is this one.
      *
      * The household's TCL is **API 34**, where only the first route exists, which is why
@@ -434,7 +435,7 @@ class MainActivity : ComponentActivity() {
             // **It puts a floor of [BACK_ECHO_MILLIS] under stepping back through the add
             // screen**, which has up to four steps to walk. A household pressing `BACK` faster
             // than once every 800 ms loses a press. That is the price of the echo guard and it
-            // is paid on API 35 and later only; the household's set is API 34, where one press
+            // is paid on API 36 and later only; the household's set is API 34, where one press
             // arrives once.
             if (now - lastBackAtMillis < BACK_ECHO_MILLIS) return
             // The key screen is drawn in front of everything, so it answers first. It steps

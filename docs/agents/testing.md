@@ -125,12 +125,33 @@ The emulator is `googletv1080p`, and it is the right device for this on purpose:
 320dpi is the household television's own geometry, so a card measures the same number of dp on
 both.
 
-**The debug APK gains one empty Activity and nothing else.** An instrumentation test runs inside
+**The debug APK gains two Activities that draw nothing of their own, and nothing else.** An instrumentation test runs inside
 the app under test, so the Activity `createComposeRule()` puts a composition into has to be
 declared in the app's own manifest. `app/src/debug/AndroidManifest.xml` declares it, not exported
 and debug only. The usual artifact for this, `androidx.compose.ui:ui-test-manifest`, is
 deliberately not used, because it declares the same Activity **exported** and the debug APK is
 what is installed on the household television.
+
+**The second is `KeyEventBackActivity`, added by build ticket 54.** It is the same empty Activity
+with `android:enableOnBackInvokedCallback="false"`, also not exported, and it counts the presses
+of `BACK` that reach `onBackPressed`. Use it for any test of whether a key handler lets `BACK`
+through.
+
+A test that only needs an overlay closed, and then checks where the highlight went, may stay on
+the plain Activity and call `onBackPressedDispatcher.onBackPressed()`.
+`HomeCloseFocusTest`, `OverlayFocusTest` and `SourceCloseFocusTest` do that, and that is correct
+for them, because they test focus and not the key route.
+
+- On the household TCL, API 34, `BACK` is only a key event. A Compose key handler that consumes
+  it stops it, and no `BackHandler` runs.
+- On this emulator, API 36, the key event still reaches Compose. But the system also runs
+  `BackHandler` on the key down, by a second route that does not depend on what Compose did
+  with the key. A test there can pass while the household is stuck.
+- `KeyEventBackActivity` leaves only the key-event route, so the emulator behaves like the TCL.
+  Press `BACK` with `Instrumentation.sendKeyDownUpSync`. A key sent with `performKeyPress` stops
+  inside Compose and never reaches `Activity.onKeyUp`.
+- Assert `keyRouteBacks` on the Activity as well. It counts the presses that took the key-event
+  route, so a later Android that ignored the attribute would fail the test instead of passing it.
 
 **Instrumentation tests never touch the household television.** They install, clear and drive an
 app, and the household's Watch log is on that set and cannot be fetched again.

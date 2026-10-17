@@ -1,7 +1,6 @@
 package local.youtubetv.ui
 
 import android.view.KeyEvent as AndroidKeyEvent
-import androidx.activity.ComponentActivity
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -12,6 +11,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performKeyPress
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import local.youtubetv.KeyEventBackActivity
 import local.youtubetv.data.Landing
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -68,7 +69,7 @@ import org.junit.runner.RunWith
 class SourceKeyGuardTest {
 
     @get:Rule
-    val compose = createAndroidComposeRule<ComponentActivity>()
+    val compose = createAndroidComposeRule<KeyEventBackActivity>()
 
     /**
      * A Source whose first walk is still running, with nothing watched.
@@ -98,36 +99,13 @@ class SourceKeyGuardTest {
      * a video and `Down` walks the grid under the scrim, and only the second leaves the menu
      * looking untouched.
      *
-     * **`BACK` is not asserted here, and the reason is measured.** `overlayKeepsEveryKey` lets
-     * `BACK` through whatever else it keeps, so that a household on an overlay holding no
-     * highlight is never left with no way off it but the `HOME` button. **Nothing in this suite
-     * can prove that exception**, because on this emulator `BACK` does not reach `BackHandler`
-     * through Compose's key pipeline at all: with the exception removed by hand, so that the
-     * guard swallows `BACK`, an injected `KEYCODE_BACK` still closes the submenu. See build
-     * ticket 54. An earlier version of this case asserted the close and could not fail, which is
-     * what `/code-review` on build ticket 52 found; the assertion was taken out rather than left
-     * reading as a guard. The rule's own half of it has four JVM cases in
-     * `OverlayKeepsEveryKeyTest`.
+     * **`BACK` is the one key the guard lets through, and it has a case of its own**,
+     * [backLeavesAWhollyDimSubmenuForTheTopLines], because it needs a real injected key and this
+     * case presses through a node.
      */
     @Test
     fun noKeyReachesTheGridBehindAWhollyDimSubmenu() {
-        openTheSource()
-        hold(openedOnCard, AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        awaitTheMenuHoldsTheHighlight()
-
-        // Down to the fourth line of the top level, `Mark as unwatched`, and choose it.
-        repeat(3) { press(openedOnCard, AndroidKeyEvent.KEYCODE_DPAD_DOWN) }
-        press(openedOnCard, AndroidKeyEvent.KEYCODE_DPAD_CENTER)
-        compose.onNodeWithText(cardMenuSubTitle(markWatched = false)).assertExists()
-        compose.onNodeWithText(JUST_THIS_LINE).assertExists()
-
-        // The submenu is wholly dim, so the card behind the scrim is holding the highlight and
-        // the guard is the only thing between it and the household's next key.
-        assertEquals(
-            "a line of the wholly dim submenu took the highlight",
-            listOf(openedOnCard),
-            focusedTags(),
-        )
+        openTheWhollyDimSubmenu()
 
         press(openedOnCard, AndroidKeyEvent.KEYCODE_DPAD_CENTER)
         compose.waitForIdle()
@@ -143,6 +121,61 @@ class SourceKeyGuardTest {
         assertEquals("a key played the video behind the menu", 0, plays)
         compose.onNodeWithText(JUST_THIS_LINE).assertExists()
 
+    }
+
+    /**
+     * `BACK` leaves a wholly dim submenu for the top lines, although the guard keeps every other
+     * key.
+     *
+     * **This is the exception in `overlayKeepsEveryKey`, and on the household television it is
+     * the only way off this submenu.** No line can take the highlight, so the guard is live for
+     * as long as the submenu is up. If the guard kept `BACK` too, the household would have the
+     * `HOME` button and nothing else.
+     *
+     * **Measured on the household TCL on 2026-10-03, by build ticket 54**, with one press of
+     * `BACK` against this same submenu:
+     *
+     * - With the exception, the guard let both halves of the press through. The card menu's
+     *   `BackHandler` ran 1 ms after the key up.
+     * - With the exception removed by hand, the guard consumed both halves. No `BackHandler`
+     *   ran, and the submenu stayed up.
+     *
+     * **Three things make this case able to fail, and all three are needed.**
+     *
+     * - **The Activity is [KeyEventBackActivity]**, which turns `OnBackInvokedCallback` off. On
+     *   this emulator, API 36, the system otherwise runs `BackHandler` on the key down by a route
+     *   that never visits the guard. Under the plain `ComponentActivity` this case passed with the
+     *   exception removed. The TCL is API 34 and has only the key route, which is what this
+     *   Activity leaves.
+     * - **`BACK` is a real injected key**, through `Instrumentation.sendKeyDownUpSync`. A key sent
+     *   through a node with `performKeyPress` stops inside Compose and never reaches
+     *   `Activity.onKeyUp`, so it closes nothing whatever the guard decides.
+     * - **The last assertion checks the route.** `keyRouteBacks` counts the presses that reached
+     *   `onBackPressed`, which only the key-event route calls. If a later Android ignored the
+     *   manifest attribute, the callback route would close the submenu again, and this
+     *   assertion is what would say so.
+     *
+     * Checked by hand on 2026-10-03, two ways:
+     *
+     * - With the `isBack` term removed, this case failed on the first assertion after the press.
+     *   Both other cases in this class still passed.
+     * - With the manifest attribute removed, this case failed on the route assertion.
+     */
+    @Test
+    fun backLeavesAWhollyDimSubmenuForTheTopLines() {
+        openTheWhollyDimSubmenu()
+
+        InstrumentationRegistry.getInstrumentation()
+            .sendKeyDownUpSync(AndroidKeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+
+        compose.onNodeWithText(JUST_THIS_LINE).assertDoesNotExist()
+        compose.onNodeWithText(PLAY_FROM_START).assertExists()
+        assertEquals(
+            "BACK closed the submenu by the callback route, so this case proves nothing",
+            1,
+            compose.activity.keyRouteBacks,
+        )
     }
 
     /**
@@ -182,6 +215,33 @@ class SourceKeyGuardTest {
         compose.waitForIdle()
         compose.onNodeWithText(PERIOD_PANEL_TITLE).assertExists()
         assertEquals("the centre button played the video behind the panel", 0, plays)
+    }
+
+    /**
+     * Opens the card menu on the landing card and chooses `Mark as unwatched`, whose submenu is
+     * wholly dim on this Source, then checks that the guard is live.
+     *
+     * Nothing is watched and the first walk is still running, so the submenu offers only
+     * `Just this`, and that line is dim because the card is already unwatched.
+     */
+    private fun openTheWhollyDimSubmenu() {
+        openTheSource()
+        hold(openedOnCard, AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        awaitTheMenuHoldsTheHighlight()
+
+        // Down to the fourth line of the top level, `Mark as unwatched`, and choose it.
+        repeat(3) { press(openedOnCard, AndroidKeyEvent.KEYCODE_DPAD_DOWN) }
+        press(openedOnCard, AndroidKeyEvent.KEYCODE_DPAD_CENTER)
+        compose.onNodeWithText(cardMenuSubTitle(markWatched = false)).assertExists()
+        compose.onNodeWithText(JUST_THIS_LINE).assertExists()
+
+        // The submenu is wholly dim, so the card behind the scrim is holding the highlight and
+        // the guard is the only thing between it and the household's next key.
+        assertEquals(
+            "a line of the wholly dim submenu took the highlight",
+            listOf(openedOnCard),
+            focusedTags(),
+        )
     }
 
     private fun openTheSource() {

@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    The empty Activity `createComposeRule()` starts, declared only in the debug build.
+    The empty Activity `createComposeRule()` starts, declared only in the debug build, and a
+    second one, `KeyEventBackActivity`, a class of this app's own debug source set. It counts
+    the presses of `BACK` that reach `onBackPressed`, and is otherwise the same.
 
     An instrumentation test runs inside the app under test, so the Activity it puts a
     composition into has to be declared in **this** app's manifest and not in the test APK's.
-    That is what `androidx.compose.ui:ui-test-manifest` is for, and this file is that artifact
-    written out by hand, for one reason: it declares the Activity `android:exported="true"`.
+    That is what `androidx.compose.ui:ui-test-manifest` is for, and the first entry here is that
+    artifact written out by hand, for one reason: it declares the Activity `android:exported="true"`.
 
     The debug APK is what is installed on the household television, so an exported Activity
     there is an empty screen any app on the set could start. Nothing needs that. The
@@ -23,6 +25,15 @@
     <application>
         <activity
             android:name="androidx.activity.ComponentActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <!--
+            The same empty Activity, with `BACK` delivered only as a key event, the way the
+            household TCL delivers it. See `KeyEventBackActivity` and build ticket 54.
+        -->
+        <activity
+            android:name="local.youtubetv.KeyEventBackActivity"
+            android:enableOnBackInvokedCallback="false"
             android:exported="false"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>

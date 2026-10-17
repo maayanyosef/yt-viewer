@@ -167,18 +167,28 @@ fun cardMenuKeepsKey(
  *
  * **[isBack] is let through whatever else is kept, and that is not a detail.** The retry ladder
  * that puts the highlight on a line gives up at about 484 ms, and a wholly dim submenu never
- * lands at all, so an overlay can hold no highlight for as long as it is open. A guard with no
- * exception was expected to swallow `BACK` and leave the household with no way off that overlay
- * but the `HOME` button, because Compose sees `BACK` as a key event before the back dispatcher
- * runs `BackHandler`.
+ * lands at all, so an overlay can hold no highlight for as long as it is open. Without this
+ * term the guard swallows `BACK`, and the household has no way off that overlay but the `HOME`
+ * button.
  *
- * **That last sentence was measured on `emulator-5554` on 2026-09-21 and did not hold there.**
- * With this term removed by hand, an injected `KEYCODE_BACK` still closed the overlay, which
- * says `BACK` did not reach this guard as a key event at all. Android 13 and up route the system
- * back gesture through `OnBackInvokedCallback` at the window rather than down the view hierarchy.
- * Whether the household TCL behaves the same way is not known, and the term is kept until it is,
- * because being wrong the other way leaves the household stuck on an overlay. **Build ticket 54**
- * is where that is settled, and it needs the television.
+ * **Measured on the household TCL on 2026-10-03, by build ticket 54.** The TCL is API 34 and the
+ * app does not opt in to `OnBackInvokedCallback`, so `BACK` is only a key event there. It goes
+ * through this guard like any other key, and `Activity.onKeyUp` turns it into `onBackPressed`
+ * only if nothing consumed it. One press of `BACK` on a wholly dim submenu gave:
+ *
+ * - With this term, both halves of the press passed the guard. The card menu's `BackHandler`
+ *   ran 1 ms after the key up.
+ * - With this term removed by hand, the guard consumed both halves. No `BackHandler` ran, and
+ *   the submenu stayed up.
+ *
+ * **The `googletv1080p` emulator cannot show this on its own.** It is API 36 and the app targets
+ * 36. The same diagnostic build logged `BACK` arriving at this guard there too, as a key down
+ * and a key up. But the system also called `OnBackInvokedCallback` on the key down, and that
+ * second route ran `BackHandler` 6 ms later with this term or without it. An earlier note here
+ * read the close as `BACK` not reaching the guard at all, which was wrong. `SourceKeyGuardTest`
+ * turns the second route off with `KeyEventBackActivity`, and its `BACK` case fails when this
+ * term is removed. Only API 34 and API 36 were measured. Android documents the second route as
+ * the default from Android 16, API 36, for an app that targets 36.
  *
  * **[overlayHasFocus] is tested, never a bare [overlayOpen].** The outer `Box` is an ancestor of
  * the overlay as well, and preview runs from the top down, so keeping every key while the
