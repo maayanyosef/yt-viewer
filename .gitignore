@@ -1,0 +1,29 @@
+secrets.properties
+keystore.properties
+*.jks
+*.keystore
+local.properties
+.gradle/
+build/
+*/build/
+**/build/
+.idea/
+*.iml
+.DS_Store
+
+# Agent worktrees. Each one is its own git checkout.
+.claude/worktrees/
+
+# Screenshots and the television lock, written by tools/tv.
+tools/tv/work/
+tools/tv/patrol.ignore
+
+# Kotlin compiler session files, written by Gradle.
+.kotlin/
+
+
+# The television's address, read by tools/tv. Copy device.properties.example to make it.
+tools/tv/device.properties
+
+# Each developer's own tickets. See docs/agents/issue-tracker.md.
+.scratch/

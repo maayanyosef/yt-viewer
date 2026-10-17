@@ -1,0 +1,8 @@
+# The television the scripts in tools/tv/ drive.
+# Copy this file to tools/tv/device.properties and set your own address.
+# tools/tv/device.properties is in .gitignore, so your address is never committed.
+#
+# The address is on the television: Settings, Network & Internet, your network.
+address=192.168.1.20
+# Optional. adb over the network uses 5555 when this is left out.
+port=5555

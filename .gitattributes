@@ -1,0 +1,15 @@
+# Line endings. Kotlin sources are LF in this repository: 109 of 116 were LF
+# when this file was written, and the 7 that were not caused a whole-file diff
+# the moment an agent touched one. Ticket 29 rewrote all 1,392 lines of
+# MainActivity.kt for a 53 line change that way, which hides the real change
+# from a reviewer and from git blame.
+*.kt text eol=lf
+*.kts text eol=lf
+*.md text eol=lf
+
+# Pictures and databases are bytes. A screenshot pair is compared by md5 in this
+# project, so nothing may touch them.
+*.png binary
+*.db binary
+*.jks binary
+*.keystore binary

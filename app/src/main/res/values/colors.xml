@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The one place the app's colours are defined. The theme, the launcher art and the
+     Composables all read them from here. -->
+<resources>
+    <color name="surface">#FF0E0F12</color>
+    <color name="on_surface">#FFFFFFFF</color>
+    <color name="on_surface_muted">#FF9AA0A6</color>
+    <!-- The least urgent text on a screen, such as when a Source was last updated. -->
+    <color name="on_surface_faint">#FF6B7076</color>
+    <color name="surface_raised">#FF2A2E36</color>
+    <color name="accent">#FF3EA6FF</color>
+
+    <!-- A focused card or chip is filled, not merely outlined. An outline alone was hard to
+         find from the sofa. Text on top of it flips to the two dark colours below. -->
+    <color name="focus_fill">#FFF4F5F7</color>
+    <color name="on_focus">#FF101216</color>
+    <color name="on_focus_muted">#FF4A505C</color>
+
+    <!-- Behind a badge on a thumbnail: the duration, and the marker on a video that cannot
+         simply be played. Both sit on a photograph. -->
+    <color name="badge_scrim">#CC000000</color>
+
+    <!-- What a card shows while its thumbnail is still arriving, or when it never does. -->
+    <color name="thumbnail_placeholder">#FF22252B</color>
+
+    <!-- A watched video: a dark wash over the whole thumbnail, and a small green marker at the
+         right end of the card's date line. The wash is what carries across the room; the
+         marker is what names the reason. Spec section 7.3.
+
+         The marker was in the thumbnail's top-right corner until 2026-09-20, when ticket 15
+         moved it off the picture, because it hid too much of it. Only the wash is left on the
+         thumbnail, and only the wash now draws under the duration badge.
+
+         `watched_tick` fills the marker's square. `watched_tick_glyph` draws the tick inside
+         that square, and is dark so the tick reads against the green. -->
+    <color name="watched_wash">#A6000000</color>
+    <color name="watched_tick">#FF49D06A</color>
+    <color name="watched_tick_glyph">#FF07240F</color>
+
+    <!-- Behind the card menu. Dark enough that the panel is plainly in front, light enough
+         that the household can still see which card it is standing on. -->
+    <color name="menu_scrim">#CC0A0B0E</color>
+
+    <!-- The In progress bar along the bottom edge of a thumbnail, and the same bar under the
+         player. Red, because that is what every video player on the television uses for how
+         far a video has got, and the household reads it without being told. Spec 7.3. -->
+    <color name="in_progress">#FFE02B3C</color>
+    <!-- The unfilled part of that bar, over a photograph. -->
+    <color name="in_progress_track">#66FFFFFF</color>
+</resources>

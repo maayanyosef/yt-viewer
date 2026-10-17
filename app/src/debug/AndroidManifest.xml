@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The empty Activity `createComposeRule()` starts, declared only in the debug build.
+
+    An instrumentation test runs inside the app under test, so the Activity it puts a
+    composition into has to be declared in **this** app's manifest and not in the test APK's.
+    That is what `androidx.compose.ui:ui-test-manifest` is for, and this file is that artifact
+    written out by hand, for one reason: it declares the Activity `android:exported="true"`.
+
+    The debug APK is what is installed on the household television, so an exported Activity
+    there is an empty screen any app on the set could start. Nothing needs that. The
+    instrumentation runs under this app's own uid, so it can start a non-exported Activity of
+    this package perfectly well, and build ticket 28 checked that on the `googletv1080p`
+    emulator: the whole suite passes with `exported="false"`.
+
+    The theme is the one `ui-test-manifest` uses, so a test composes over the same background it
+    would have. The app's own `Theme.YouTubeTv` is not used, because every screen here is handed
+    its colours through `Ink` and reads nothing from the theme.
+
+    See `docs/agents/testing.md`.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="androidx.activity.ComponentActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+</manifest>

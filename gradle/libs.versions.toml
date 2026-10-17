@@ -1,0 +1,40 @@
+[versions]
+# Looked up 2026-09-19, in build ticket 01.
+agp = "9.4.1"
+kotlin = "2.4.20"
+activityCompose = "1.13.0"
+composeBom = "2026.09.00"
+tvMaterial = "1.1.0"
+# Looked up on Maven Central 2026-09-19.
+coroutines = "1.11.0"
+junit = "4.13.2"
+# The instrumentation layer. Looked up on dl.google.com 2026-09-21; both are the newest
+# stable, and 1.8.0 / 1.4.0 do not exist yet. See build ticket 28.
+androidxTestRunner = "1.7.0"
+androidxTestExtJunit = "1.3.0"
+# org.json ships inside Android, but only as a stub on the unit-test classpath. This real
+# implementation is a test-only dependency, so the JSON parsing can be tested on the JVM.
+orgJson = "20260814"
+# The QR code on the key screen. Build ticket 64. Looked up on Maven Central 2026-10-17:
+# 1.8.0 is the newest release. One pure Java class set, MIT licence, no dependencies of its own.
+qrcodegen = "1.8.0"
+
+[libraries]
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
+androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
+androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.ref = "tvMaterial" }
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+# Instrumentation tests. The Compose artifact takes its version from the Compose BOM, which
+# pins it at 1.12.1, exactly as every other Compose artifact here does.
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
+qrcodegen = { group = "io.nayuki", name = "qrcodegen", version.ref = "qrcodegen" }
+org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

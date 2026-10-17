@@ -1,0 +1,450 @@
+{
+  "kind": "youtube#videoListResponse",
+  "etag": "sn5L5TB2KWcjo1KJsJ1oDf7DSFY",
+  "items": [
+    {
+      "kind": "youtube#video",
+      "etag": "S0_k_PpcrTPvgOuKuWS4q__gWMA",
+      "id": "DnUAXX41KJ8",
+      "snippet": {
+        "publishedAt": "2026-09-18T19:00:11Z",
+        "channelId": "UCAuUUnT6oDeKwE6v1NGQxug",
+        "title": "| TED",
+        "description": "There's more health advice available than ever before — and no easy way to tell what’s worth your time. From biotech breakthroughs to smarter cancer screening, physician Dhruv Khullar and microbiologist Zack Abbott examine what happens when science can change who we are — including the potential of reengineering the human body — and what medicine might look like in 20 years. (Made possible with the support of ZBiotics)",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/DnUAXX41KJ8/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/DnUAXX41KJ8/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/DnUAXX41KJ8/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/DnUAXX41KJ8/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/DnUAXX41KJ8/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "TED",
+        "tags": [
+          "TEDTalk",
+          "TEDTalks",
+          "TED Talk",
+          "TED Talks",
+          "TED"
+        ],
+        "categoryId": "22",
+        "liveBroadcastContent": "none",
+        "defaultLanguage": "en",
+        "localized": {
+          "title": "| TED",
+          "description": "There's more health advice available than ever before — and no easy way to tell what’s worth your time. From biotech breakthroughs to smarter cancer screening, physician Dhruv Khullar and microbiologist Zack Abbott examine what happens when science can change who we are — including the potential of reengineering the human body — and what medicine might look like in 20 years. (Made possible with the support of ZBiotics)"
+        },
+        "defaultAudioLanguage": "en"
+      },
+      "contentDetails": {
+        "duration": "PT2M1S",
+        "dimension": "2d",
+        "definition": "hd",
+        "caption": "false",
+        "licensedContent": true,
+        "contentRating": {},
+        "projection": "rectangular"
+      },
+      "player": {
+        "embedHtml": "\u003ciframe width=\"405\" height=\"720\" src=\"https://www.youtube.com/embed/DnUAXX41KJ8\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen\u003e\u003c/iframe\u003e",
+        "embedHeight": "720",
+        "embedWidth": "405"
+      }
+    },
+    {
+      "kind": "youtube#video",
+      "etag": "w7ZYAD-_VuS8d0qGyjnhJKCENhI",
+      "id": "eMade-Up_01",
+      "snippet": {
+        "publishedAt": "2026-09-19T15:00:36Z",
+        "channelId": "UCAuUUnT6oDeKwE6v1NGQxug",
+        "title": "The Wiggly Wonder of Music | Jacob Collier | TED",
+        "description": "Grammy-winning musician Jacob Collier has a name for the feeling that moves through a great piece of music: the wiggle. Watch him break down the idea into its three parts — melody, rhythm and harmony — with nothing but his own voice, a grand piano and Louis Armstrong’s “What a Wonderful World.” Turns out life, like music, was never made to run in straight lines. (Recorded at TED2026 on April 14, 2026)\n\nJoin us in person at a TED conference: https://tedtalks.social/events\nBecome a TED Member to support our mission: https://ted.com/membership\nSubscribe to a TED newsletter: https://ted.com/newsletters\n\nFollow TED! \nInstagram: https://www.instagram.com/ted\nLinkedIn: https://www.linkedin.com/company/ted-conferences\nTikTok: https://www.tiktok.com/@tedtoks\nFacebook: https://facebook.com/TED\nX: https://www.twitter.com/TEDTalks\n\nThe TED Talks channel features the best talks and performances from the TED Conference, where the world's leading thinkers and doers give the talk of their lives in 18 minutes (or less) — plus originals, podcasts and exclusive content. Look for videos on Technology, Entertainment and Design as well as science, business, global issues, the arts and more. Visit https://TED.com for our entire library, transcripts, translations and personalized recommendations.\n\nWatch more: https://go.ted.com/jacobcollier26\n\nhttps://youtu.be/eMade-Up_01\n\nTED videos may be used for non-commercial purposes under a Creative Commons License, Attribution–Non Commercial–No Derivatives (or the CC BY – NC – ND 4.0 International) and in accordance with the TED Talks Usage Policy: https://www.ted.com/about/our-organization/our-policies-terms/ted-talks-usage-policy. For more information on using TED for commercial purposes (e.g. employee learning, in a film or online course), submit a request at https://media-requests.ted.com\n\n#TED #TEDTalks #Music",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/eMade-Up_01/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/eMade-Up_01/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/eMade-Up_01/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/eMade-Up_01/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/eMade-Up_01/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          },
+          "uhd": {
+            "url": "https://i.ytimg.com/vi/eMade-Up_01/uhddefault.jpg",
+            "width": 3840,
+            "height": 2160
+          }
+        },
+        "channelTitle": "TED",
+        "tags": [
+          "TEDTalk",
+          "TEDTalks",
+          "TED Talk",
+          "TED Talks",
+          "TED"
+        ],
+        "categoryId": "10",
+        "liveBroadcastContent": "none",
+        "defaultLanguage": "en",
+        "localized": {
+          "title": "The Wiggly Wonder of Music | Jacob Collier | TED",
+          "description": "Grammy-winning musician Jacob Collier has a name for the feeling that moves through a great piece of music: the wiggle. Watch him break down the idea into its three parts — melody, rhythm and harmony — with nothing but his own voice, a grand piano and Louis Armstrong’s “What a Wonderful World.” Turns out life, like music, was never made to run in straight lines. (Recorded at TED2026 on April 14, 2026)\n\nJoin us in person at a TED conference: https://tedtalks.social/events\nBecome a TED Member to support our mission: https://ted.com/membership\nSubscribe to a TED newsletter: https://ted.com/newsletters\n\nFollow TED! \nInstagram: https://www.instagram.com/ted\nLinkedIn: https://www.linkedin.com/company/ted-conferences\nTikTok: https://www.tiktok.com/@tedtoks\nFacebook: https://facebook.com/TED\nX: https://www.twitter.com/TEDTalks\n\nThe TED Talks channel features the best talks and performances from the TED Conference, where the world's leading thinkers and doers give the talk of their lives in 18 minutes (or less) — plus originals, podcasts and exclusive content. Look for videos on Technology, Entertainment and Design as well as science, business, global issues, the arts and more. Visit https://TED.com for our entire library, transcripts, translations and personalized recommendations.\n\nWatch more: https://go.ted.com/jacobcollier26\n\nhttps://youtu.be/eMade-Up_01\n\nTED videos may be used for non-commercial purposes under a Creative Commons License, Attribution–Non Commercial–No Derivatives (or the CC BY – NC – ND 4.0 International) and in accordance with the TED Talks Usage Policy: https://www.ted.com/about/our-organization/our-policies-terms/ted-talks-usage-policy. For more information on using TED for commercial purposes (e.g. employee learning, in a film or online course), submit a request at https://media-requests.ted.com\n\n#TED #TEDTalks #Music"
+        },
+        "defaultAudioLanguage": "en"
+      },
+      "contentDetails": {
+        "duration": "PT10M31S",
+        "dimension": "2d",
+        "definition": "hd",
+        "caption": "true",
+        "licensedContent": true,
+        "contentRating": {},
+        "projection": "rectangular"
+      },
+      "player": {
+        "embedHtml": "\u003ciframe width=\"1280\" height=\"720\" src=\"https://www.youtube.com/embed/eMade-Up_01\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen\u003e\u003c/iframe\u003e",
+        "embedHeight": "720",
+        "embedWidth": "1280"
+      }
+    },
+    {
+      "kind": "youtube#video",
+      "etag": "vEJfmeyCfW5Oe4ZKj-KTTJ6isFc",
+      "id": "P12XxVMbYXg",
+      "snippet": {
+        "publishedAt": "2026-08-31T17:00:06Z",
+        "channelId": "UCSJ4gkVC6NrvII8umztf0Ow",
+        "title": "Lofi Girl x Secret Lair - beats to cast to 💫",
+        "description": "Elevate your games with the ultimate tabletop soundtrack.\n\nLofi Girl x Secret Lair: beats to cast to brings two worlds together, matching the distinct rhythm of Magic: The Gathering and soothing lofi study music. Soft card shuffles, land taps, and double-sleeved ASMR blend naturally into warm, lofi beats engineered for deep focus. Smooth down the tension of a complex stack, keep your heart rate cool during a tough topdeck, and let every turn flow naturally.\n\nJoin Lofi Girl's dad as he shares his passion with his daughter, letting her peek into the art of deck building one card at a time.\n\nTap in, tune out, and may the best deck win. 🃏🎵\n\n🎼 | Listen on Spotify, Apple music and more\n→  https://lnk.to/lofigirl-x-secretlair02\n\n💿 | Shop the limited Vinyle here\n→ https://link.lofigirlshop.com/lgxsecretlairspecialvinyl\n\n🎶 | Tracklist\n[00:00:00] luv pug - Aura\n[00:02:05] Hazy Year - zephyr\n[00:04:49] flowray - the key\n[00:07:27] little blue, Allem Iversom - Artifact\n[00:09:59] Klemsis - Life\n[00:12:30] fnonose - second chance\n[00:15:29] pepperonibeats - run away together\n[00:18:18] Mondo Loops - Underground Sea\n[00:21:03] No Spirit, Casiio - Starblessed\n[00:23:53] towerz, quist - equator\n[00:26:34] Odd Panda - Aetherbloom\n[00:29:06] MyceliumBug - Mycosynth Lattice\n[00:31:37] Beach Pomodoros - Lost Alara\n[00:34:23] sleepermane - dear yesterday\n[00:36:51] saint rumi, Shopan, Ian Ewing - The Balance of Mana\n[00:39:29] marsquake - black lotus\n[00:41:58] cxlt., amies - Serra's Dream\n[00:45:16] ØDYSSEE, L'Indécis - Weatherlight\n[00:48:21] Alto - Urza's Tower\n[00:51:22] steezy prime, Spaniel Mac - slow growth\n[00:54:17] Thaehan - back to you\n[00:57:00] WYS - so simple\n[00:59:34] takeo - bumbleflower\n[01:02:06] Kainbeats - View From the Abbey\n\n🌎 | Lofi Girl on all social media\n→  https://link.lofigirl.com/m/Community\n\n🌐| Our Websites\n→  https://link.lofigirl.com/m/website\n\n👕 | Lofi Girl merch\n→  https://link.lofigirlshop.com/shop\n\n🎮 | Our video games\n→ https://link.lofigirl.com/m/games\n\n🎭 | Create your lofi avatar now\n→  https://lofigirl.com/generator/\n\n🎨 | Art by Lofi Studio\nDirection, Art Direction & Supervision: Léonore Kuszel, Laura Vuillerme, Julien Maret\nBG Layout: Laura Vuillerme\nBG Colour: Manon Bailly\nPosing: Emile Maret \nAnimation: Uriel Mimran, Vincent Athier\nAssist, clean & colour: Jasmine Nacer-Cherif, Léa Savinel, Sam Delpeux\nCompositing: Ashley Sfeir\n\n🤗 Thank you for listening, I hope you will have a good time here\n\n🧡All visuals and music in this video are 100% crafted by talented human artists, without the use of AI. We’re committed to delivering genuine, hand-made creations for our audience to enjoy.",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/P12XxVMbYXg/default.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/P12XxVMbYXg/mqdefault.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/P12XxVMbYXg/hqdefault.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/P12XxVMbYXg/sddefault.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/P12XxVMbYXg/maxresdefault.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "Lofi Girl",
+        "tags": [
+          "lofi study music",
+          "study music",
+          "lofi beats",
+          "study lofi",
+          "lofi hip hop",
+          "lofi music",
+          "beats to study to",
+          "chill study beats",
+          "music for studying",
+          "focus music",
+          "concentration music",
+          "deep focus music",
+          "deep work music",
+          "lofi study",
+          "chill music",
+          "lofi chill",
+          "background music",
+          "work music",
+          "calm music",
+          "lofi chill music",
+          "instrumental music",
+          "relaxing music",
+          "study beats",
+          "chill vibes",
+          "lofi deep focus",
+          "music to study to",
+          "chill lofi",
+          "lofi mix",
+          "lofi girl",
+          "chilledcow",
+          "lofi hip hop radio"
+        ],
+        "categoryId": "10",
+        "liveBroadcastContent": "none",
+        "defaultLanguage": "en",
+        "localized": {
+          "title": "Lofi Girl x Secret Lair - beats to cast to 💫",
+          "description": "Elevate your games with the ultimate tabletop soundtrack.\n\nLofi Girl x Secret Lair: beats to cast to brings two worlds together, matching the distinct rhythm of Magic: The Gathering and soothing lofi study music. Soft card shuffles, land taps, and double-sleeved ASMR blend naturally into warm, lofi beats engineered for deep focus. Smooth down the tension of a complex stack, keep your heart rate cool during a tough topdeck, and let every turn flow naturally.\n\nJoin Lofi Girl's dad as he shares his passion with his daughter, letting her peek into the art of deck building one card at a time.\n\nTap in, tune out, and may the best deck win. 🃏🎵\n\n🎼 | Listen on Spotify, Apple music and more\n→  https://lnk.to/lofigirl-x-secretlair02\n\n💿 | Shop the limited Vinyle here\n→ https://link.lofigirlshop.com/lgxsecretlairspecialvinyl\n\n🎶 | Tracklist\n[00:00:00] luv pug - Aura\n[00:02:05] Hazy Year - zephyr\n[00:04:49] flowray - the key\n[00:07:27] little blue, Allem Iversom - Artifact\n[00:09:59] Klemsis - Life\n[00:12:30] fnonose - second chance\n[00:15:29] pepperonibeats - run away together\n[00:18:18] Mondo Loops - Underground Sea\n[00:21:03] No Spirit, Casiio - Starblessed\n[00:23:53] towerz, quist - equator\n[00:26:34] Odd Panda - Aetherbloom\n[00:29:06] MyceliumBug - Mycosynth Lattice\n[00:31:37] Beach Pomodoros - Lost Alara\n[00:34:23] sleepermane - dear yesterday\n[00:36:51] saint rumi, Shopan, Ian Ewing - The Balance of Mana\n[00:39:29] marsquake - black lotus\n[00:41:58] cxlt., amies - Serra's Dream\n[00:45:16] ØDYSSEE, L'Indécis - Weatherlight\n[00:48:21] Alto - Urza's Tower\n[00:51:22] steezy prime, Spaniel Mac - slow growth\n[00:54:17] Thaehan - back to you\n[00:57:00] WYS - so simple\n[00:59:34] takeo - bumbleflower\n[01:02:06] Kainbeats - View From the Abbey\n\n🌎 | Lofi Girl on all social media\n→  https://link.lofigirl.com/m/Community\n\n🌐| Our Websites\n→  https://link.lofigirl.com/m/website\n\n👕 | Lofi Girl merch\n→  https://link.lofigirlshop.com/shop\n\n🎮 | Our video games\n→ https://link.lofigirl.com/m/games\n\n🎭 | Create your lofi avatar now\n→  https://lofigirl.com/generator/\n\n🎨 | Art by Lofi Studio\nDirection, Art Direction & Supervision: Léonore Kuszel, Laura Vuillerme, Julien Maret\nBG Layout: Laura Vuillerme\nBG Colour: Manon Bailly\nPosing: Emile Maret \nAnimation: Uriel Mimran, Vincent Athier\nAssist, clean & colour: Jasmine Nacer-Cherif, Léa Savinel, Sam Delpeux\nCompositing: Ashley Sfeir\n\n🤗 Thank you for listening, I hope you will have a good time here\n\n🧡All visuals and music in this video are 100% crafted by talented human artists, without the use of AI. We’re committed to delivering genuine, hand-made creations for our audience to enjoy."
+        },
+        "defaultAudioLanguage": "en"
+      },
+      "contentDetails": {
+        "duration": "PT1H4M35S",
+        "dimension": "2d",
+        "definition": "hd",
+        "caption": "false",
+        "licensedContent": true,
+        "contentRating": {},
+        "projection": "rectangular"
+      },
+      "player": {
+        "embedHtml": "\u003ciframe width=\"1280\" height=\"720\" src=\"https://www.youtube.com/embed/P12XxVMbYXg\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen\u003e\u003c/iframe\u003e",
+        "embedHeight": "720",
+        "embedWidth": "1280"
+      },
+      "liveStreamingDetails": {
+        "actualStartTime": "2026-08-31T17:00:06Z",
+        "actualEndTime": "2026-08-31T18:06:40Z",
+        "scheduledStartTime": "2026-08-31T17:00:00Z"
+      }
+    },
+    {
+      "kind": "youtube#video",
+      "etag": "cs3WOcxy5AO0N8-xhRTtrHceUR8",
+      "id": "x_g72BLelDU",
+      "snippet": {
+        "publishedAt": "2026-09-01T07:13:46Z",
+        "channelId": "UCSJ4gkVC6NrvII8umztf0Ow",
+        "title": "lofi hip hop radio 📚 beats to relax/study to",
+        "description": "🎼 | Listen on Spotify, Apple music and more\n→  https://lnk.to/lofi-hiphop-beats-to-relax-study-to02\n\n🌎 | Lofi Girl on all social media\n→  https://link.lofigirl.com/m/Community\n\n🌐| Our Websites\n→  https://link.lofigirl.com/m/website\n\n👕 | Lofi Girl merch\n→  https://link.lofigirlshop.com/shop\n\n🎮 | Our video games\n→ https://link.lofigirl.com/m/games\n\n🎭 | Create your lofi avatar now\n→  https://lofigirl.com/generator/\n\n🎨 | Art by Lofi Studio (full list of artists here)\n→  https://www.instagram.com/p/CuChqFXs08M/\n\n🤗 Thank you for listening, I hope you will have a good time here\n\n🧡All visuals and music in this video are 100% crafted by talented human artists, without the use of AI. We’re committed to delivering genuine, hand-made creations for our audience to enjoy.",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/x_g72BLelDU/default_live.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/x_g72BLelDU/mqdefault_live.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/x_g72BLelDU/hqdefault_live.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/x_g72BLelDU/sddefault_live.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/x_g72BLelDU/maxresdefault_live.jpg",
+            "width": 1280,
+            "height": 720
+          },
+          "fhd": {
+            "url": "https://i.ytimg.com/vi/x_g72BLelDU/fhddefault_live.jpg",
+            "width": 1920,
+            "height": 1080
+          }
+        },
+        "channelTitle": "Lofi Girl",
+        "tags": [
+          "lo-fi",
+          "lo fi",
+          "lofi",
+          "lofi hiphop",
+          "lo-fi hiphop",
+          "lo fi hiphop",
+          "hiphop",
+          "hip hop",
+          "lofi hip hop",
+          "lo-fi hip hop",
+          "lo fi hip hop",
+          "lofi radio",
+          "lo-fi radio",
+          "lo fi radio",
+          "lofi hip hop radio",
+          "lo-fi hip hop radio",
+          "lo fi hip hop radio",
+          "chilledcow",
+          "chilled cow",
+          "chilledcow radio",
+          "chilled cow radio",
+          "chilledcow station",
+          "lofi radio chilledcow",
+          "chillhop",
+          "study music",
+          "lofi hip hop radio - beats to relax\\/study to",
+          "beats to relax",
+          "music to study",
+          "radio",
+          "relaxing music",
+          "playlist",
+          "music"
+        ],
+        "categoryId": "10",
+        "liveBroadcastContent": "upcoming",
+        "defaultLanguage": "en",
+        "localized": {
+          "title": "lofi hip hop radio 📚 beats to relax/study to",
+          "description": "🎼 | Listen on Spotify, Apple music and more\n→  https://lnk.to/lofi-hiphop-beats-to-relax-study-to02\n\n🌎 | Lofi Girl on all social media\n→  https://link.lofigirl.com/m/Community\n\n🌐| Our Websites\n→  https://link.lofigirl.com/m/website\n\n👕 | Lofi Girl merch\n→  https://link.lofigirlshop.com/shop\n\n🎮 | Our video games\n→ https://link.lofigirl.com/m/games\n\n🎭 | Create your lofi avatar now\n→  https://lofigirl.com/generator/\n\n🎨 | Art by Lofi Studio (full list of artists here)\n→  https://www.instagram.com/p/CuChqFXs08M/\n\n🤗 Thank you for listening, I hope you will have a good time here\n\n🧡All visuals and music in this video are 100% crafted by talented human artists, without the use of AI. We’re committed to delivering genuine, hand-made creations for our audience to enjoy."
+        },
+        "defaultAudioLanguage": "en"
+      },
+      "contentDetails": {
+        "duration": "P0D",
+        "dimension": "2d",
+        "definition": "sd",
+        "caption": "false",
+        "licensedContent": true,
+        "contentRating": {},
+        "projection": "rectangular"
+      },
+      "player": {
+        "embedHtml": "\u003ciframe width=\"960\" height=\"720\" src=\"https://www.youtube.com/embed/x_g72BLelDU\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen\u003e\u003c/iframe\u003e"
+      },
+      "liveStreamingDetails": {
+        "activeLiveChatId": "Cg0KC3hfZzcyQkxlbERVKicKGFVDU0o0Z2tWQzZOcnZJSTh1bXp0ZjBPdxILeF9nNzJCTGVsRFU"
+      }
+    },
+    {
+      "kind": "youtube#video",
+      "etag": "jgYuZfKmPbX5bbZHmT9zjxGcaRk",
+      "id": "3PFJ9SETS4M",
+      "snippet": {
+        "publishedAt": "2026-09-17T17:49:46Z",
+        "channelId": "UCSJ4gkVC6NrvII8umztf0Ow",
+        "title": "lofi house radio 🌅  lounge music to vibe/chill to",
+        "description": "The bell has rung, work hours are officially over, and it's time to ease into your afterwork energy!\n\nWelcome Lofi Teacher, from the world of Lofi Girl, blending electro sounds and lofi textures to bring you crisp, modern lofi house: the ultimate 24/7 radio stream for when the day ends and you're ready to let go.\n\nWhen the daily grind is behind you, this stream sets the mood with pure chill vibes, tuning effortlessly between warm lounge music and smooth late-night sounds. Streaming around the clock, the station pairs warm tape saturation with classic four-on-the-floor beats, rolling basslines, and lush pads for the ultimate lounge house experience.\n\nTune in, cook your favorite meal, and enjoy a well-deserved evening off.\n\n🎼 | Listen on Spotify, Apple music and more\n→  https://lnk.to/house_lofi02\n\n🎨 | Art by Lofi Studio\n\nProduction: Léonore Kuszel\nArt Direction & Supervision: Laura Vuillerme, Julien Maret \nChara Design: Emile Maret, Nolwen Eschylle\nBG : Margaux Peltat, Manon Bailly, Laura Vuillerme, Pascal Valdes\nAnimation: Vincent Athier, Clément Desnos, Uriel Mimran, Anais Mirliaz, Jeanne Griseri\nAssist, clean & color: Jasmine Nacer-Cherif, Léa Savinel, Sam Delpeux, \nAlice Mimran-Didelot, Nawell Sdiri \nCompositing: Ashley Sfeir\n\n🤗 Thank you for listening, I hope you will have a good time here\n\n🧡All visuals and music in this video are 100% crafted by talented human artists, without the use of AI. We’re committed to delivering genuine, hand-made creations for our audience to enjoy.",
+        "thumbnails": {
+          "default": {
+            "url": "https://i.ytimg.com/vi/3PFJ9SETS4M/default_live.jpg",
+            "width": 120,
+            "height": 90
+          },
+          "medium": {
+            "url": "https://i.ytimg.com/vi/3PFJ9SETS4M/mqdefault_live.jpg",
+            "width": 320,
+            "height": 180
+          },
+          "high": {
+            "url": "https://i.ytimg.com/vi/3PFJ9SETS4M/hqdefault_live.jpg",
+            "width": 480,
+            "height": 360
+          },
+          "standard": {
+            "url": "https://i.ytimg.com/vi/3PFJ9SETS4M/sddefault_live.jpg",
+            "width": 640,
+            "height": 480
+          },
+          "maxres": {
+            "url": "https://i.ytimg.com/vi/3PFJ9SETS4M/maxresdefault_live.jpg",
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "channelTitle": "Lofi Girl",
+        "tags": [
+          "lofi girl",
+          "chilledcow",
+          "chilled cow",
+          "lofi house",
+          "lofi house mix",
+          "lofi house radio",
+          "lounge music",
+          "lounge house",
+          "lounge beats",
+          "rooftop lounge",
+          "chill lounge",
+          "house lounge",
+          "lofi lounge",
+          "night lounge",
+          "evening lounge",
+          "sunset lounge",
+          "lounge vibe",
+          "lounge chill",
+          "rooftop music",
+          "vibe music",
+          "chill music",
+          "chill vibes",
+          "music to vibe to",
+          "music to chill to",
+          "night music",
+          "evening music",
+          "lofi beats",
+          "lofi radio",
+          "background music",
+          "downtempo",
+          "chill house",
+          "house lofi"
+        ],
+        "categoryId": "10",
+        "liveBroadcastContent": "live",
+        "defaultLanguage": "en",
+        "localized": {
+          "title": "lofi house radio 🌅  lounge music to vibe/chill to",
+          "description": "The bell has rung, work hours are officially over, and it's time to ease into your afterwork energy!\n\nWelcome Lofi Teacher, from the world of Lofi Girl, blending electro sounds and lofi textures to bring you crisp, modern lofi house: the ultimate 24/7 radio stream for when the day ends and you're ready to let go.\n\nWhen the daily grind is behind you, this stream sets the mood with pure chill vibes, tuning effortlessly between warm lounge music and smooth late-night sounds. Streaming around the clock, the station pairs warm tape saturation with classic four-on-the-floor beats, rolling basslines, and lush pads for the ultimate lounge house experience.\n\nTune in, cook your favorite meal, and enjoy a well-deserved evening off.\n\n🎼 | Listen on Spotify, Apple music and more\n→  https://lnk.to/house_lofi02\n\n🎨 | Art by Lofi Studio\n\nProduction: Léonore Kuszel\nArt Direction & Supervision: Laura Vuillerme, Julien Maret \nChara Design: Emile Maret, Nolwen Eschylle\nBG : Margaux Peltat, Manon Bailly, Laura Vuillerme, Pascal Valdes\nAnimation: Vincent Athier, Clément Desnos, Uriel Mimran, Anais Mirliaz, Jeanne Griseri\nAssist, clean & color: Jasmine Nacer-Cherif, Léa Savinel, Sam Delpeux, \nAlice Mimran-Didelot, Nawell Sdiri \nCompositing: Ashley Sfeir\n\n🤗 Thank you for listening, I hope you will have a good time here\n\n🧡All visuals and music in this video are 100% crafted by talented human artists, without the use of AI. We’re committed to delivering genuine, hand-made creations for our audience to enjoy."
+        },
+        "defaultAudioLanguage": "en-US"
+      },
+      "contentDetails": {
+        "duration": "P0D",
+        "dimension": "2d",
+        "definition": "sd",
+        "caption": "false",
+        "licensedContent": true,
+        "contentRating": {},
+        "projection": "rectangular"
+      },
+      "player": {
+        "embedHtml": "\u003ciframe width=\"960\" height=\"720\" src=\"https://www.youtube.com/embed/3PFJ9SETS4M\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen\u003e\u003c/iframe\u003e"
+      },
+      "liveStreamingDetails": {
+        "actualStartTime": "2026-09-17T17:54:26Z",
+        "scheduledStartTime": "2026-09-17T17:50:00Z",
+        "concurrentViewers": "1607",
+        "activeLiveChatId": "Cg0KCzNQRko5U0VUUzRNKicKGFVDU0o0Z2tWQzZOcnZJSTh1bXp0ZjBPdxILM1BGSjlTRVRTNE0"
+      }
+    }
+  ],
+  "pageInfo": {
+    "totalResults": 5,
+    "resultsPerPage": 5
+  }
+}
