@@ -207,6 +207,24 @@ interface SourceStore {
     fun setAutoplayNext(sourceId: String, autoplayNext: Boolean)
 
     /**
+     * The household turned Shuffle on or off for this Source. Build ticket 69.
+     *
+     * One column, for the same reasons [setAutoplayNext] writes one, and a Source with no row
+     * is left alone. The Shuffle run is not touched: it survives Shuffle being turned off and
+     * on again, which the ticket asks for in as many words.
+     */
+    fun setShuffle(sourceId: String, shuffle: Boolean)
+
+    /**
+     * Writes this Source's Shuffle run. Build ticket 69.
+     *
+     * One column, `shuffle_run`, and nothing else. It is never the Watch log: starting a new
+     * run writes here and changes no Watch. See [ShuffleRun] for what is stored. A Source with
+     * no row is left alone, because a run belongs to a Source the household has added.
+     */
+    fun setShuffleRun(sourceId: String, run: ShuffleRun)
+
+    /**
      * The change check of spec section 5.2 just read this Source's remote count.
      *
      * One column, for the same reason every writer above it writes one. A Source with no row
@@ -371,6 +389,19 @@ data class StoredSource(
      * has, and that reads as "no typed name", so every card keeps the name it already had.
      */
     val typedName: String? = null,
+    /**
+     * Whether Shuffle is on for this Source. Build ticket 69.
+     *
+     * **A new Source starts with it off, and so does every Source stored before it existed**:
+     * the column is null on those rows and null reads as off. Unlike `autoplay_next` there is
+     * no older setting to keep, because Shuffle did not exist before.
+     */
+    val shuffle: Boolean = false,
+    /**
+     * Where this Source's Shuffle run is up to, or null when it has never had one. Build
+     * ticket 69. See [ShuffleRun], which says why a seed and a played list are all of it.
+     */
+    val shuffleRun: ShuffleRun? = null,
 ) {
     companion object {
         /**
@@ -552,6 +583,18 @@ class InMemorySourceStore : SourceStore {
     override fun setRemoteCount(sourceId: String, count: Int) {
         val existing = sources[sourceId] ?: return
         sources[sourceId] = existing.copy(remoteCount = count)
+    }
+
+    override fun setShuffle(sourceId: String, shuffle: Boolean) {
+        val existing = sources[sourceId] ?: return
+        sources[sourceId] = existing.copy(shuffle = shuffle)
+    }
+
+    // Through the stored text and back, as the real store does, so a run this store keeps is
+    // exactly a run `SqliteSourceStore` would read back.
+    override fun setShuffleRun(sourceId: String, run: ShuffleRun) {
+        val existing = sources[sourceId] ?: return
+        sources[sourceId] = existing.copy(shuffleRun = shuffleRunOfStored(run.stored()))
     }
 
     override fun fillMissingTitle(sourceId: String, title: String): Boolean {

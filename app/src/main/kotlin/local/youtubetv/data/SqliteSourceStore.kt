@@ -72,6 +72,9 @@ class SqliteSourceStore(private val helper: SQLiteOpenHelper) : SourceStore {
             // column set back to null. Spelling it out is what makes that a decision rather
             // than an omission.
             put("typed_name", StoredSource.typedNameOfInput(source.typedName))
+            // Build ticket 69. Spelled out for the same reason `typed_name` is.
+            put("shuffle", if (source.shuffle) 1 else 0)
+            put("shuffle_run", source.shuffleRun?.stored())
         }
         helper.writableDatabase.insertWithOnConflict(
             TABLE_SOURCES,
@@ -331,6 +334,16 @@ class SqliteSourceStore(private val helper: SQLiteOpenHelper) : SourceStore {
 
     override fun setAutoplayNext(sourceId: String, autoplayNext: Boolean) {
         val values = ContentValues().apply { put("autoplay_next", if (autoplayNext) 1 else 0) }
+        helper.writableDatabase.update(TABLE_SOURCES, values, "source_id = ?", arrayOf(sourceId))
+    }
+
+    override fun setShuffle(sourceId: String, shuffle: Boolean) {
+        val values = ContentValues().apply { put("shuffle", if (shuffle) 1 else 0) }
+        helper.writableDatabase.update(TABLE_SOURCES, values, "source_id = ?", arrayOf(sourceId))
+    }
+
+    override fun setShuffleRun(sourceId: String, run: ShuffleRun) {
+        val values = ContentValues().apply { put("shuffle_run", run.stored()) }
         helper.writableDatabase.update(TABLE_SOURCES, values, "source_id = ?", arrayOf(sourceId))
     }
 
@@ -600,6 +613,8 @@ private val SOURCE_COLUMNS = arrayOf(
     "added_at",
     "remote_count",
     "typed_name",
+    "shuffle",
+    "shuffle_run",
 )
 
 private fun Cursor.toStoredSource(): StoredSource = StoredSource(
@@ -626,6 +641,10 @@ private fun Cursor.toStoredSource(): StoredSource = StoredSource(
     // gave it. A blank is read as null here as well, so that a row written by an older or a
     // stranger build cannot put an empty name on a card. See [StoredSource.typedNameOfInput].
     typedName = StoredSource.typedNameOfInput(if (isNull(7)) null else getString(7)),
+    // Null for a row written before database version 12, and that reads as off. Build ticket 69.
+    shuffle = booleanOrFalse(8),
+    // Null until the Source first has a run. A run this build cannot read is no run.
+    shuffleRun = shuffleRunOfStored(if (isNull(9)) null else getString(9)),
 )
 
 private fun Cursor.instantOrNull(column: Int): Instant? =

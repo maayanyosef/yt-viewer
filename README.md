@@ -269,6 +269,8 @@ When you have no Source yet, the first screen shows the line **API key: replace 
 - **Last played**: the video you played most recently in a Source.
 - **Period**: a year or a month of a Source, used to jump through a long Source.
 - **Bulk mark**: marking every video older or newer than a chosen one as watched, or as unwatched, in one action.
+- **Shuffle**: a setting of one Source. With Shuffle on, next, previous and autoplay play the Source's videos in random order.
+- **Shuffle run**: one pass of Shuffle through a Source. Every video plays once before any video plays again.
 
 ### 6.2 The home screen
 
@@ -285,7 +287,7 @@ Each card shows:
 What the keys do on the home screen:
 
 - **Left** and **Right** move along the row.
-- **OK** opens the Source at its Next unwatched video.
+- **OK** opens the Source at its Next unwatched video. With Shuffle on, it opens at the Shuffle run's next video.
 - **Press and hold OK** opens the Source menu. It has these lines:
   - **Open at Next unwatched**, **Open at Last played**, **Open at the newest video**
   - **Refresh this Source**, which asks YouTube for new videos now
@@ -317,6 +319,7 @@ A row of buttons at the top holds every control:
 - **Next unwatched** moves to the first unwatched video.
 - **Period** opens a list of years or months. Select one to jump there.
 - **Autoplay: On** or **Autoplay: Off** chooses whether the next video starts by itself.
+- **Shuffle: On** or **Shuffle: Off** chooses random order for next, previous and autoplay. See section 6.6.
 
 What the keys do on the grid:
 
@@ -338,8 +341,8 @@ What the keys do on the grid:
 | **Right**, Fast forward | Forward 10 seconds. Hold it to go forward faster |
 | **Up** | Forward 5 minutes |
 | **Down** | Back 5 minutes |
-| **Channel up**, Next | Next video, in the Source's Direction |
-| **Channel down**, Previous | Previous video, in the Source's Direction |
+| **Channel up**, Next | Next video, in the Source's Direction. With Shuffle on, the Shuffle run's next video |
+| **Channel down**, Previous | Previous video, in the Source's Direction. With Shuffle on, the video that played before it |
 | **BACK** | Save the position and return to the grid |
 
 The app saves your position while you watch.
@@ -348,6 +351,40 @@ With **Autoplay: On**, the next video starts after a short countdown. Press **OK
 
 Some televisions keep the **MENU** and **GUIDE** buttons for themselves.
 The app never needs them.
+
+### 6.6 Shuffle
+
+Shuffle plays a Source in random order.
+Turn it on or off with the **Shuffle** button on the Source screen.
+Each Source keeps its own setting, and a new Source starts with it off.
+
+What changes with Shuffle on:
+
+- **Next**, **Previous** and autoplay pick videos at random from the whole Source, watched or not.
+  - Hidden Shorts, unavailable videos and premieres that have not started are skipped.
+- The highlight on the grid rests on the video Shuffle will play next.
+  - Press **OK** there to play it.
+  - Any video you move to and play yourself is an ordinary play.
+- **Previous** goes back through the videos in the order they played.
+
+What does not change:
+
+- The grid stays in the Source's Direction.
+- **Next unwatched** keeps your place. A video that Shuffle chose never moves it forward.
+- A video Shuffle played still counts as watched, and it becomes your Last played.
+
+**The Shuffle run.**
+Every video plays once, in random order, before any video plays again.
+When every video has played, a new run starts by itself.
+The run is kept when you close the app and when you turn Shuffle off and on again.
+New videos of the Source join the run at a random place.
+
+**Start a new run.**
+Press and hold **OK** on the **Shuffle** button.
+The app asks if you want to start a new Shuffle run.
+**Keep this run** is selected first, and **Start a new run** is below it.
+A new run forgets which videos the old run played. It never changes what you watched.
+While the **Shuffle** button is highlighted, the line under the Source's name says how many videos played in this run.
 
 ## 7. Privacy
 

@@ -90,6 +90,18 @@ data class Played(
     val sourceId: String,
     val positionSeconds: Int?,
     val completed: Boolean,
+    /**
+     * True when Shuffle chose this play rather than the household. Build ticket 69.
+     *
+     * A Shuffle play is a Watch like any other play, and it moves Last played like any other,
+     * but **it never moves the High-water mark**. See `docs/adr/0002-a-shuffle-play-never-moves-the-high-water-mark.md`
+     * and [WatchState.countsForHighWaterMark].
+     *
+     * It is written into the payload only when it is true. **An entry with no such field reads
+     * as false**, so every `played` entry written before build ticket 69 is an ordinary play,
+     * and a replay of an old log gives the High-water mark it always gave.
+     */
+    val shuffle: Boolean = false,
 )
 
 /** What a [WatchKind.UNWATCHED] entry says. */
@@ -304,18 +316,26 @@ private const val KEY_WATCHED = "watched"
 private const val KEY_CLEARS_LAST_PLAYED = "clearsLastPlayed"
 private const val KEY_TITLE = "title"
 private const val KEY_DIRECTION = "direction"
+private const val KEY_SHUFFLE = "shuffle"
 
-/** The payload of a [WatchKind.PLAYED] entry. `position` is left out when there is none. */
+/**
+ * The payload of a [WatchKind.PLAYED] entry. `position` is left out when there is none.
+ *
+ * `shuffle` is written only when it is true, so an ordinary play's payload is exactly what it
+ * was before build ticket 69. See [Played.shuffle].
+ */
 fun playedPayload(
     videoId: String,
     sourceId: String,
     positionSeconds: Int?,
     completed: Boolean,
+    shuffle: Boolean = false,
 ): String = JSONObject()
     .put(KEY_VIDEO_ID, videoId)
     .put(KEY_SOURCE_ID, sourceId)
     .apply { if (positionSeconds != null) put(KEY_POSITION, positionSeconds) }
     .put(KEY_COMPLETED, completed)
+    .apply { if (shuffle) put(KEY_SHUFFLE, true) }
     .toString()
 
 /** The payload of a [WatchKind.UNWATCHED] entry. */
@@ -383,6 +403,8 @@ fun WatchEntry.played(): Played? {
         sourceId = json.optString(KEY_SOURCE_ID),
         positionSeconds = if (json.has(KEY_POSITION)) json.optInt(KEY_POSITION) else null,
         completed = json.optBoolean(KEY_COMPLETED),
+        // Missing reads as false: an entry written before build ticket 69 is an ordinary play.
+        shuffle = json.optBoolean(KEY_SHUFFLE, false),
     )
 }
 

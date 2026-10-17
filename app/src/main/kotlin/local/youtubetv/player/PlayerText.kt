@@ -106,6 +106,12 @@ const val NO_NEXT_VIDEO = "This is the last video in this Source."
 /** What a press of previous says when the player is already on the first video in Direction. */
 const val NO_PREVIOUS_VIDEO = "This is the first video in this Source."
 
+/**
+ * What a press of previous says on the first video of a Shuffle run. Build ticket 69, rule 8.
+ * Previous walks back through the run in the order the videos played, and stops here.
+ */
+const val FIRST_OF_SHUFFLE_RUN = "This is the first video of this Shuffle run."
+
 fun playerErrorReason(code: Int): String = when (code) {
     2 -> "YouTube does not know this video id."
     5 -> "This television's player could not play this video."

@@ -1,5 +1,6 @@
 package local.youtubetv.ui
 
+import local.youtubetv.data.Landing
 import local.youtubetv.data.StoredVideo
 
 /**
@@ -62,11 +63,11 @@ fun selectionAfterLanding(index: Int, takeFocus: Boolean): Int =
  * standing on a chip with the header line empty. Seen on the household television, three times
  * out of three, on 2026-09-20.
  *
- * @param overlayOpen whether anything is drawn over the grid. There are two such panels: the
- *   card menu and the Period jump list. Ticket 25 removed a third, the one-time
- *   mark-everything-watched offer, and took it out of this test at the same time. **A panel
- *   added later must be added here too**, because a stale name and a missing one are the same
- *   defect.
+ * @param overlayOpen whether anything is drawn over the grid. There are three such panels: the
+ *   card menu, the Period jump list and, since build ticket 69, the Shuffle question. Ticket 25
+ *   removed a fourth, the one-time mark-everything-watched offer, and took it out of this test
+ *   at the same time. **A panel added later must be added here too**, because a stale name and
+ *   a missing one are the same defect.
  */
 fun selectionAfterChipFocus(selection: Int, overlayOpen: Boolean): Int =
     if (overlayOpen) selection else NO_SELECTION
@@ -168,3 +169,38 @@ private val MODIFIER_KEY_CODES = setOf(
     117, 118, // META_LEFT, META_RIGHT
     119, // FUNCTION
 )
+
+/**
+ * The video Shuffle chose for the highlight when the Source screen opens, or null. Build ticket
+ * 69, rule 7.
+ *
+ * Only a plain opening, [Landing.DEFAULT], lets Shuffle choose. `Open at Next unwatched`,
+ * `Open at Last played` and `Open at newest` are the household asking for a place by name, so
+ * they win, and OK on the card they land on is an ordinary play.
+ *
+ * @param opening where the screen landed.
+ * @param shuffleNext where the run's next video sits, or null when Shuffle is off.
+ */
+fun shuffleArmedOnOpening(
+    openAt: Landing,
+    opening: Int,
+    shuffleNext: Int?,
+    videos: List<StoredVideo>,
+): String? =
+    if (openAt == Landing.DEFAULT && shuffleNext != null && opening == shuffleNext) {
+        videos.getOrNull(opening)?.videoId
+    } else {
+        null
+    }
+
+/**
+ * What is left of Shuffle's choice after one key goes down. Build ticket 69, rule 7.
+ *
+ * OK keeps it, because one press of OK on that card is the Shuffle play. Every other key the
+ * household presses clears it: a card the household moves to and presses is an ordinary play,
+ * and that holds even for the same card after a walk away and back. A modifier key alone, which
+ * the television keepalive sends, is not the household and clears nothing. See
+ * [countsAsHouseholdKey].
+ */
+fun shuffleArmedAfterKey(armed: String?, isSelect: Boolean, counts: Boolean): String? =
+    if (isSelect || !counts) armed else null

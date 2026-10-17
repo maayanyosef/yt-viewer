@@ -79,6 +79,8 @@ data class NextUnwatchedLanding(val index: Int?, val count: Int, val highWaterMa
  * So the rule is positional and it never goes backwards:
  *
  * 1. Find the **highest** index in Direction that carries a Watch. That is the high-water mark.
+ *    **A Shuffle play's Watch is left out**, since build ticket 69: see
+ *    [WatchState.countsForHighWaterMark] and ADR 0002.
  * 2. Next unwatched is the first gap after it.
  * 3. **The fallback.** When nothing is left after the mark, and gaps remain above it, it is the
  *    first gap in the whole Source, which is exactly the old rule. The owner chose this over a dim
@@ -188,7 +190,8 @@ fun <T : VideoKey> nextUnwatchedLanding(
     var gapsAnywhere = 0
     for (index in effectiveOrder(videos, watches, direction, newlyListed, canBeLandedOn)) {
         val video = videos[index]
-        if (watches[video.videoId]?.watched == true) {
+        val watch = watches[video.videoId]
+        if (watch?.countsForHighWaterMark == true) {
             // Everything counted above is behind the household now, so it is thrown away
             // rather than remembered. This is the whole of "never backwards".
             highWaterMark = index
@@ -196,6 +199,10 @@ fun <T : VideoKey> nextUnwatchedLanding(
             gapsAfterTheMark = 0
             continue
         }
+        // **A video only Shuffle played is neither a gap nor the mark.** Build ticket 69 and
+        // ADR 0002. It carries a Watch, so it is never offered. Shuffle chose it, so the
+        // household has not worked along the Source to it. The gaps before it stay ahead.
+        if (watch?.watched == true) continue
         if (firstGapAfterTheMark == null) firstGapAfterTheMark = index
         gapsAfterTheMark++
         if (firstGapAnywhere == null) firstGapAnywhere = index
@@ -255,7 +262,7 @@ private fun <T : VideoKey> effectiveOrder(
     // A Source with no Watch at all has no mark, so there is nothing to sit after and nothing
     // to move. Its first gap is already its first video. `Lofi Girl` is that Source on the
     // household set.
-    val mark = landable.lastOrNull { watches[videos[it].videoId]?.watched == true }
+    val mark = landable.lastOrNull { watches[videos[it].videoId]?.countsForHighWaterMark == true }
         ?: return landable
     // A Newly listed video already **after** the mark is an ordinary gap and is left alone,
     // which is the `index < mark` test.
@@ -326,8 +333,15 @@ fun openingIndex(
  * household has pressed a key, and moves the highlight to the new answer. See
  * `highlightAfterRefresh` in `refresh/RefreshMerge.kt`.
  *
+ * **With Shuffle on, a plain opening lands on the run's next video.** Build ticket 69, rule 7.
+ * Only [Landing.DEFAULT] does that. The three landings the household picks by name from the
+ * rail's long-press menu are asked for, and spec section 7.1 says what they mean, so they win
+ * over Shuffle.
+ *
  * @param videos the videos the grid shows, already in the Source's Direction.
  * @param lastPlayedVideoId what [lastPlayedVideoId] returned for this Source.
+ * @param shuffleNext where the Shuffle run's next video sits in [videos], or null when Shuffle
+ *   is off or has nothing to play. See [shuffleNextIndex].
  */
 fun openingLanding(
     openAt: Landing,
@@ -335,7 +349,9 @@ fun openingLanding(
     watches: Map<String, WatchState>,
     direction: Direction,
     lastPlayedVideoId: String?,
+    shuffleNext: Int? = null,
 ): Int = when (openAt) {
+    Landing.DEFAULT -> shuffleNext ?: openingIndex(videos, watches, direction)
     Landing.NEXT_UNWATCHED -> openingIndex(videos, watches, direction)
     Landing.LAST_PLAYED ->
         lastPlayedIndex(videos, lastPlayedVideoId) ?: openingIndex(videos, watches, direction)
@@ -399,12 +415,21 @@ fun newestIndex(videos: List<StoredVideo>): Int? {
 }
 
 /**
- * Where a Source opens when the household chose it from the home rail's long-press menu.
+ * Where a Source opens.
  *
- * Spec section 7.1 puts all three on that menu. [NEXT_UNWATCHED] is also what a plain press on
- * a rail card means, and what spec section 7.2 makes the Source screen's own default.
+ * Spec section 7.1 puts the last three on the home rail's long-press menu, where the household
+ * asks for one by name. [DEFAULT] is a plain press on a rail card, which nobody asked anything
+ * of. Build ticket 69 split the two apart: without Shuffle they land in the same place.
  */
 enum class Landing {
+    /**
+     * A plain opening: a press on a rail card, or opening a Source the household already has
+     * from the add screen. It is Next unwatched, which spec section 7.2 makes the Source
+     * screen's own default, **or the Shuffle run's next video when Shuffle is on**. Build
+     * ticket 69, rule 7.
+     */
+    DEFAULT,
+
     /** The first gap after the high-water mark, in Direction. See [nextUnwatchedLanding]. */
     NEXT_UNWATCHED,
 

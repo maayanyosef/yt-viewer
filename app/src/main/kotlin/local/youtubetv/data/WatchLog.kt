@@ -224,9 +224,17 @@ class WatchLog(
      * The same three writes as [markJustThis], in one transaction, and for the same reason:
      * the log entry is the only one of them that nothing could work out again.
      *
+     * @param shuffle true when Shuffle chose this play rather than the household. The entry
+     *   carries the mark, and the High-water mark ignores it. See [Played.shuffle], ADR 0002
+     *   and build ticket 69.
      * @return the handle [updatePlay] needs, or null when there was nothing to write.
      */
-    fun startPlay(video: StoredVideo, positionSeconds: Int, completed: Boolean): PlayInProgress? {
+    fun startPlay(
+        video: StoredVideo,
+        positionSeconds: Int,
+        completed: Boolean,
+        shuffle: Boolean = false,
+    ): PlayInProgress? {
         if (video.videoId.isBlank()) return null
         return store.inTransaction {
             val entry = store.append(
@@ -236,12 +244,19 @@ class WatchLog(
                     sourceId = video.sourceId,
                     positionSeconds = positionSeconds,
                     completed = completed,
+                    shuffle = shuffle,
                 ),
                 at = now(),
             )
             // This is a real play, so every video at or past it stops being Newly listed. A
             // Newly listed video the household has now moved past becomes an ordinary skipped
             // video, and is never offered again. Build ticket 40.
+            //
+            // **A Shuffle play does this too.** Build ticket 69 asked whether it should, and
+            // the answer is the glossary's own rule: Newly listed ends at "a play at or past
+            // it", and a Shuffle play is a play. Only the High-water mark ignores it, because
+            // ADR 0002 names that and nothing else. The ticket's closing notes say what this
+            // costs a newest-first Source.
             clearNewlyListedFrom(video)
             store.keepVideo(
                 KeptVideo(
@@ -251,7 +266,7 @@ class WatchLog(
                 ),
             )
             val state = deriveAndStore(video.videoId)
-            if (state == null) null else PlayInProgress(entry.id, state)
+            if (state == null) null else PlayInProgress(entry.id, state, shuffle)
         }
     }
 
@@ -280,10 +295,13 @@ class WatchLog(
                     sourceId = video.sourceId,
                     positionSeconds = positionSeconds,
                     completed = completed,
+                    // The mark the entry was written with, kept. A rewrite that dropped it
+                    // would turn a Shuffle play into an ordinary one ten seconds in.
+                    shuffle = play.shuffle,
                 ),
             )
             val state = deriveAndStore(video.videoId)
-            if (state == null) null else PlayInProgress(play.entryId, state)
+            if (state == null) null else PlayInProgress(play.entryId, state, play.shuffle)
         }
     }
 
@@ -444,7 +462,12 @@ class WatchLog(
  * It stops being meaningful the moment the household leaves the video. From then on the entry
  * is frozen and this handle is thrown away.
  */
-data class PlayInProgress(val entryId: String, val state: WatchState)
+data class PlayInProgress(
+    val entryId: String,
+    val state: WatchState,
+    /** Whether the entry carries the Shuffle mark. [WatchLog.updatePlay] writes it back. */
+    val shuffle: Boolean = false,
+)
 
 /**
  * What one Source's screen needs from the log, read in one pass.

@@ -39,7 +39,7 @@ The first gap after the high-water mark, in the Source's Direction. A gap is a v
 _Avoid_: Up next, continue
 
 **High-water mark**:
-The furthest the household has worked along a Source: the highest index, in that Source's Direction, carrying a Watch. It is what Next unwatched starts from. It follows position, never time, so playing one old video does not move it back. A Source with no Watch has none.
+The furthest the household has worked along a Source: the highest index, in that Source's Direction, carrying a Watch that is not a Shuffle play. It is what Next unwatched starts from. It follows position, never time, so playing one old video does not move it back. A Shuffle play leaves a Watch but never moves it, so a random pick far ahead does not lose the household's place. A Source with no Watch has none.
 _Avoid_: Last watched, watermark, progress point, furthest point
 
 **Newly listed**:

@@ -61,6 +61,11 @@ class PlaybackSession(
     private val watches: WatchLog,
     resumeFrom: Int? = null,
     heldForCountdown: Boolean = false,
+    /**
+     * True when Shuffle chose this play. Its `played` entry then carries the Shuffle mark, so
+     * it never moves the High-water mark. Build ticket 69 and ADR 0002.
+     */
+    private val shuffle: Boolean = false,
     private val log: (String) -> Unit = {},
     private val onWatchState: (WatchState) -> Unit = {},
 ) {
@@ -304,7 +309,7 @@ class PlaybackSession(
         if (open == null) {
             if (startRefusedByTheLog) return
             if (position < PLAY_THRESHOLD_SECONDS && !endedNow) return
-            val started = watches.startPlay(video, position, isCompleted)
+            val started = watches.startPlay(video, position, isCompleted, shuffle)
             if (started == null) {
                 // Asking again on the next poll would append another entry every 250 ms for
                 // the rest of the video, into a log that is never compacted.

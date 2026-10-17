@@ -30,6 +30,7 @@ import java.time.Instant
  * | 2 | Ticket 05: a `range` entry now decides, for every video it covers. |
  * | 3 | Ticket 06: Last played is derived here, by [lastPlayedVideoId]. |
  * | 4 | Ticket 42: a `newer` range stops at the later of the moment it was made and its own pivot. |
+ * | 5 | Build ticket 69: a Shuffle play is a Watch but never a High-water mark. See [WatchState.countsForHighWaterMark]. |
  *
  * Version 4 changes no stored row either, and it writes nothing to the log. A `newer` range
  * is simply read with a second end on it. See [Range.coversDate].
@@ -53,7 +54,7 @@ import java.time.Instant
  * a rebuild that produced a byte-identical table, and no stale answer is possible whatever a
  * device holds.
  */
-const val DERIVATION_VERSION = 4
+const val DERIVATION_VERSION = 5
 
 /**
  * What the app knows about one video, derived from the log.
@@ -75,6 +76,28 @@ data class WatchState(
     val positionSeconds: Int?,
     val completed: Boolean,
     val lastPlayedAt: Instant?,
+    /**
+     * Whether this video can be the **High-water mark**. Build ticket 69, ADR 0002.
+     *
+     * It is the watched state the log would give **if every Shuffle play were left out of it**,
+     * by the same newest-wins rule, and it is never true for a video that is not [watched]. So:
+     *
+     * - A video watched only by Shuffle plays is a Watch, which closes its Next unwatched gap,
+     *   but it is not a mark. Next unwatched keeps the household's place.
+     * - A video the household also played by hand, or that a Bulk mark covers, is a mark,
+     *   whatever Shuffle did to it later.
+     * - An ordinary play undone by a later `unwatched` stays undone, even when Shuffle plays
+     *   the video again afterwards.
+     *
+     * It defaults to [watched], which is the whole rule for a log with no Shuffle play in it:
+     * every Watch was a mark before build ticket 69.
+     *
+     * **It is not a column of the derived table.** That table is read for one thing only, the
+     * position a play resumes from, and nothing that decides a mark reads it. A row read back
+     * from it takes the default. Next unwatched is always worked out from the log itself, by
+     * [LogReading.watchStates].
+     */
+    val countsForHighWaterMark: Boolean = watched,
 )
 
 /**
@@ -189,6 +212,17 @@ class LogReading private constructor(
      */
     private val decidedAt: Map<String, Int>,
     /**
+     * Where in the log the entry sits that decided each video's watched state **with every
+     * Shuffle play left out**. See [WatchState.countsForHighWaterMark] and build ticket 69.
+     *
+     * Kept apart from [decidedAt] because the two can be decided by different entries: an
+     * ordinary play, then a Bulk mark that unwatches it, then a Shuffle play. The Shuffle play
+     * decides whether the video is watched, and the Bulk mark decides whether it is a mark.
+     */
+    private val steadyDecidedAt: Map<String, Int>,
+    /** What that entry decided, by video id. A video missing from it has no steady Watch. */
+    private val steadyWatched: Map<String, Boolean>,
+    /**
      * Every readable `range`, with where in the log it sits, **grouped by the Source it
      * belongs to** and in log order within each group.
      *
@@ -221,13 +255,20 @@ class LogReading private constructor(
         if (rangesBySource.isEmpty() || videos.isEmpty()) return directStates
         val states = LinkedHashMap(directStates)
         val decided = HashMap(decidedAt)
-        applyRanges(states, decided, videos)
+        val steadyDecided = HashMap(steadyDecidedAt)
+        // Copied for the same reason as the two maps above. A range that decides the steady
+        // answer writes it here, so a later pass over the same video reads the range's answer
+        // and not the direct entries' answer.
+        val steady = HashMap(steadyWatched)
+        applyRanges(states, decided, steadyDecided, steady, videos)
         return states
     }
 
     private fun applyRanges(
         states: LinkedHashMap<String, WatchState>,
         decidedAt: HashMap<String, Int>,
+        steadyDecidedAt: HashMap<String, Int>,
+        steadyWatched: HashMap<String, Boolean>,
         videos: List<VideoKey>,
     ) {
         // The Source of the video before this one, and its ranges. Every caller on the launch
@@ -242,13 +283,15 @@ class LogReading private constructor(
                 ofSource = rangesBySource[video.sourceId].orEmpty()
             }
             if (ofSource.isEmpty()) continue
-            applyRange(states, decidedAt, video, ofSource)
+            applyRange(states, decidedAt, steadyDecidedAt, steadyWatched, video, ofSource)
         }
     }
 
     private fun applyRange(
         states: LinkedHashMap<String, WatchState>,
         decidedAt: HashMap<String, Int>,
+        steadyDecidedAt: HashMap<String, Int>,
+        steadyWatched: HashMap<String, Boolean>,
         video: VideoKey,
         ofSource: List<IndexedValue<Range>>,
     ) {
@@ -257,8 +300,27 @@ class LogReading private constructor(
         // is all that is left to decide: see [Range.coversDate].
         val covering = ofSource.lastOrNull { it.value.coversDate(video.videoPublishedAt) }
             ?: return
+
+        // The same newest-wins question, asked a second time with every Shuffle play left out.
+        // It is asked first, because the early return below answers the first question only.
+        // See [WatchState.countsForHighWaterMark] and build ticket 69.
+        val steadyDecided = steadyDecidedAt[video.videoId]
+        val steadyByRange = steadyDecided == null || steadyDecided < covering.index
+        if (steadyByRange) {
+            steadyDecidedAt[video.videoId] = covering.index
+            steadyWatched[video.videoId] = covering.value.watched
+        }
+        val steady = steadyWatched[video.videoId] == true
+
         val decided = decidedAt[video.videoId]
-        if (decided != null && decided > covering.index) return
+        if (decided != null && decided > covering.index) {
+            // A direct entry newer than the range decides whether the video is watched. When
+            // that entry is a Shuffle play, the range can still decide whether the video is a
+            // mark, so that one field is written.
+            val direct = states[video.videoId] ?: return
+            states[video.videoId] = direct.copy(countsForHighWaterMark = direct.watched && steady)
+            return
+        }
 
         val direct = states[video.videoId]
         // Where the winner sits, so that a second copy of the same video, reached later in
@@ -276,6 +338,7 @@ class LogReading private constructor(
             // Bulk mark written today can cover a video the household really played in June,
             // and the card must still show June. See spec section 3.2.
             lastPlayedAt = direct?.lastPlayedAt,
+            countsForHighWaterMark = covering.value.watched && steady,
         )
     }
 
@@ -300,16 +363,27 @@ class LogReading private constructor(
             // after every Source that has one.
             val lastPlayedBySource = HashMap<String, String?>()
             val playedAt = LinkedHashMap<String, Int>()
+            // The watched state with every Shuffle play left out, and where it was decided.
+            // See [WatchState.countsForHighWaterMark]. Build ticket 69.
+            val steadyWatched = HashMap<String, Boolean>()
+            val steadyDecidedAt = HashMap<String, Int>()
 
             for ((position, entry) in inLogOrder(entries).withIndex()) {
                 val play = entry.played()
                 if (play != null) {
+                    // A Shuffle play leaves the steady state alone: it is a Watch and not a
+                    // mark. ADR 0002.
+                    if (!play.shuffle) {
+                        steadyWatched[play.videoId] = true
+                        steadyDecidedAt[play.videoId] = position
+                    }
                     states[play.videoId] = WatchState(
                         videoId = play.videoId,
                         watched = true,
                         positionSeconds = play.positionSeconds,
                         completed = play.completed,
                         lastPlayedAt = entry.at,
+                        countsForHighWaterMark = steadyWatched[play.videoId] == true,
                     )
                     decidedAt[play.videoId] = position
                     // Last played counts a play and never a declaration, which is what the
@@ -322,6 +396,8 @@ class LogReading private constructor(
                 }
                 val unwatch = entry.unwatched()
                 if (unwatch != null) {
+                    steadyWatched[unwatch.videoId] = false
+                    steadyDecidedAt[unwatch.videoId] = position
                     states[unwatch.videoId] = WatchState(
                         videoId = unwatch.videoId,
                         watched = false,
@@ -349,6 +425,8 @@ class LogReading private constructor(
             return LogReading(
                 directStates = states,
                 decidedAt = decidedAt,
+                steadyDecidedAt = steadyDecidedAt,
+                steadyWatched = steadyWatched,
                 rangesBySource = ranges,
                 lastPlayedBySource = lastPlayedBySource,
                 sourcesByLastPlay = playedAt.entries

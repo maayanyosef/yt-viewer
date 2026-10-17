@@ -70,6 +70,7 @@ import local.youtubetv.data.WatchState
 import local.youtubetv.data.lastPlayedIndex
 import local.youtubetv.data.nextUnwatchedIndex
 import local.youtubetv.data.openingLanding
+import local.youtubetv.data.shuffleNextIndex
 import local.youtubetv.data.periodIndexFor
 import local.youtubetv.data.periodsOf
 import local.youtubetv.refresh.HighlightAfterRefresh
@@ -209,13 +210,21 @@ fun SourceScreen(
     onMarkRange: (StoredVideo, RangeSide, Boolean) -> Unit = { _, _, _ -> },
     // The player is not a screen this one navigates to. It is drawn over the whole app by the
     // Activity, because the Activity is what takes every key while a video is on. Spec 8.5.
-    onPlay: (StoredVideo, Boolean) -> Unit = { _, _ -> },
+    //
+    // The second flag is play from the start. The third is whether Shuffle chose this play:
+    // true only for one press of OK on the card Shuffle put the highlight on. Build ticket 69.
+    onPlay: (StoredVideo, Boolean, Boolean) -> Unit = { _, _, _ -> },
     // The `Order` chip. It writes the Source's row, so it is launched on the Activity's scope
     // and off the main thread, exactly like a mark.
     onFlipDirection: () -> Unit = {},
     // The `Autoplay` chip. It writes the Source's row, so it is launched on the Activity's
     // scope and off the main thread, exactly like a flip.
     onToggleAutoplay: () -> Unit = {},
+    // The `Shuffle` chip, and `Start a new run` behind its long press. Both write the Source's
+    // row, so both are launched on the Activity's scope, exactly like `Autoplay`. Build
+    // ticket 69.
+    onToggleShuffle: () -> Unit = {},
+    onStartNewShuffleRun: () -> Unit = {},
     // One logcat line per chip press. Direction, Next unwatched and Last played are rules and
     // not pictures, so this is what proves them on the television.
     onLanding: (String) -> Unit = {},
@@ -229,7 +238,7 @@ fun SourceScreen(
     // It is `openAt` and not `landing`, because this screen already has a `landing`: the state
     // holding where a **chip** has asked the grid to go. The two are different things and one
     // name for both would be a bug waiting for whoever reads this next.
-    openAt: Landing = Landing.NEXT_UNWATCHED,
+    openAt: Landing = Landing.DEFAULT,
     // Whether a video is on. The player is drawn over this screen by the Activity rather than
     // navigated to, so this screen stays composed underneath it and still sees keys while the
     // player is loading and has not taken focus yet. Without this, `MENU` in that gap opens
@@ -268,6 +277,17 @@ fun SourceScreen(
     val videos = ready?.videos.orEmpty()
     val watches = ready?.watches.orEmpty()
     val direction = ready?.direction ?: Direction.NEWEST_FIRST
+
+    // Shuffle. Build ticket 69. The run's next video, as an index into the grid, or null when
+    // Shuffle is off or has nothing to play. It is where the highlight rests whenever Shuffle
+    // is what put it there: see [shuffleArmed].
+    val shuffleOn = ready?.shuffle == true
+    // Remembered, because it hashes every playable video of the Source, and a toast or a menu
+    // recomposes this screen without changing the list or the run. Found by `/code-review`.
+    val shuffleRun = ready?.shuffleRun
+    val shuffleNext = remember(videos, shuffleRun, shuffleOn) {
+        if (shuffleOn) shuffleNextIndex(videos, shuffleRun) else null
+    }
 
     // Where `Jump to last played` would go, and null when it has nowhere to go at all. Null is
     // what greys the chip out: no `played` entry carrying a position, a range that cleared
@@ -444,6 +464,56 @@ fun SourceScreen(
     // which the second press could find already gone. Found by `/code-review` on ticket 06.
     var orderPressed by remember(sourceId) { mutableStateOf(false) }
 
+    /**
+     * The video Shuffle put the highlight on, or null. Build ticket 69, rule 7.
+     *
+     * **One press of OK on this card is a Shuffle play**, and a press on any other card is an
+     * ordinary one. So it is cleared by the household's very next key that is not OK: a card
+     * the household moves to and presses is an ordinary play, even when it is this same card
+     * after a walk away and back. See `shuffleArmedAfterKey` in `ui/SourceSelection.kt`.
+     *
+     * Shuffle puts the highlight here in four places, and each of them sets this: a plain
+     * opening of the Source, turning the chip on, playback handing back on the run's next video
+     * (a finished video with autoplay-next off, and the two-hour idle stop), and a refresh that
+     * re-lands an untouched opening.
+     */
+    var shuffleArmed by remember(sourceId) { mutableStateOf<String?>(null) }
+
+    // The long press on the `Shuffle` chip asks a question. Build ticket 69, rule 10. These
+    // three are the same shape as the card menu's: whether it is open, whether a line of it
+    // holds the highlight yet, and which of its lines does.
+    var shuffleQuestionOpen by remember(sourceId) { mutableStateOf(false) }
+    val shuffleQuestionHasFocus = remember(sourceId) { mutableStateOf(false) }
+    // Whether the `Shuffle` chip holds the highlight, which is what puts the hint on the line
+    // under the Source's name. Rule 11.
+    val shuffleChipFocused = remember(sourceId) { mutableStateOf(false) }
+    val shuffleChipFocus = remember { FocusRequester() }
+    var shuffleChipRefocus by remember(sourceId) { mutableLongStateOf(0L) }
+    // The chip was pressed while Shuffle was off, so when the Source's row says Shuffle is on
+    // the highlight moves to the run's next video. Rule 7. A flag and not a direct move,
+    // because the row is written on another thread and the run may only exist after it.
+    var shuffleTurnedOn by remember(sourceId) { mutableStateOf(false) }
+
+    // The question closed, so the highlight goes back to the chip that asked it. The same
+    // ladder the `Period` chip uses, over the same record.
+    LaunchedEffect(shuffleChipRefocus) {
+        if (shuffleChipRefocus == 0L) return@LaunchedEffect
+        askUntilHighlightHolds(
+            wait = { millis -> delay(millis) },
+            ask = { runCatching { shuffleChipFocus.requestFocus() } },
+            holds = { chipHighlight.holds(SHUFFLE_CHIP) },
+        )
+    }
+
+    /** Closes the question and gives the highlight back to the `Shuffle` chip. */
+    fun closeShuffleQuestion() {
+        // Asked while the question is still composed, for the reason [handHighlightBack] gives:
+        // a panel that is not holding the highlight when it goes gives Compose nothing to choose.
+        runCatching { shuffleChipFocus.requestFocus() }
+        shuffleQuestionOpen = false
+        shuffleChipRefocus++
+    }
+
     fun land(index: Int, takeFocus: Boolean) {
         landings++
         landing = GridLanding(seq = landings, index = index, takeFocus = takeFocus)
@@ -451,6 +521,21 @@ fun SourceScreen(
         // here. A Direction flip does not move focus at all, so it selects nothing: the
         // highlight is still on the `Order` chip. See `ui/SourceSelection.kt`.
         focusedIndex.intValue = selectionAfterLanding(index, takeFocus)
+    }
+
+    /** Puts the highlight on the Shuffle run's next video, as Shuffle's own choice. Rule 7. */
+    fun landOnShuffleNext(index: Int) {
+        shuffleArmed = videos.getOrNull(index)?.videoId
+        land(index, takeFocus = true)
+    }
+
+    // The chip was turned on and the row now says so, so the highlight goes to the run's next
+    // video. Rule 7. Keyed on the run as well, because a Source turned on for the first time
+    // has no run until the same write lands.
+    LaunchedEffect(shuffleOn, shuffleNext) {
+        if (!shuffleTurnedOn || !shuffleOn) return@LaunchedEffect
+        shuffleTurnedOn = false
+        shuffleNext?.let { landOnShuffleNext(it) }
     }
 
     // The list turned around, so the grid goes to the top of the new order. Keyed on the
@@ -540,12 +625,15 @@ fun SourceScreen(
             landingAfter = if (keyPressed.value) {
                 NO_SELECTION
             } else {
-                openingLanding(openAt, videos, watches, direction, ready?.lastPlayedVideoId)
+                openingLanding(openAt, videos, watches, direction, ready?.lastPlayedVideoId, shuffleNext)
             },
         ) ?: return@LaunchedEffect
         val to = when (decision) {
             is HighlightAfterRefresh.Land -> {
                 onLanding(refreshLandingLogLine(videos[decision.index].videoId, decision.index))
+                // The same opening worked out again, so Shuffle is what chose it whenever it
+                // did the first time. Build ticket 69.
+                shuffleArmed = shuffleArmedOnOpening(openAt, decision.index, shuffleNext, videos)
                 land(decision.index, takeFocus = true)
                 return@LaunchedEffect
             }
@@ -728,6 +816,9 @@ fun SourceScreen(
     LaunchedEffect(returnedFromPlayer) {
         if (returnedFromPlayer <= 0L) return@LaunchedEffect
         val target = landOnVideoId?.let { id -> videos.indexOfFirst { it.videoId == id } } ?: -1
+        // With Shuffle on, a finished video with autoplay-next off and the two-hour idle stop
+        // both hand back on the run's next video, and Shuffle chose it. Build ticket 69.
+        shuffleArmed = if (target >= 0 && target == shuffleNext) videos[target].videoId else null
         if (target >= 0) land(target, takeFocus = true) else askRefocus()
     }
 
@@ -814,6 +905,9 @@ fun SourceScreen(
         closePeriods(periodPanelClosesOnto(periodsReturnTo, videos.size))
     }
 
+    // `BACK` on the Shuffle question keeps the run, exactly as `Keep this run` does.
+    BackHandler(enabled = shuffleQuestionOpen) { closeShuffleQuestion() }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -830,6 +924,15 @@ fun SourceScreen(
                 // so a refresh may no longer move the highlight for them. See [keyPressed].
                 if (event.type == KeyEventType.KeyDown && countsAsHouseholdKey(event.nativeKeyEvent.keyCode)) {
                     keyPressed.value = true
+                }
+                // Any key but OK means the household is moving, so the card Shuffle chose is
+                // no longer Shuffle's choice. Build ticket 69, rule 7.
+                if (event.type == KeyEventType.KeyDown) {
+                    shuffleArmed = shuffleArmedAfterKey(
+                        armed = shuffleArmed,
+                        isSelect = isSelectKey(event),
+                        counts = countsAsHouseholdKey(event.nativeKeyEvent.keyCode),
+                    )
                 }
                 // While a video is on, this screen is not the one the household is looking at
                 // and must not answer `MENU` at all. The key is passed on rather than eaten,
@@ -886,11 +989,23 @@ fun SourceScreen(
                 ) {
                     return@onPreviewKeyEvent true
                 }
+                // The same guard for the Shuffle question, which has the same hole: until one
+                // of its two lines has the highlight, the `Shuffle` chip still has it, and the
+                // release of the long press that opened the question would toggle the chip.
+                // Build ticket 69.
+                if (overlayKeepsEveryKey(
+                        overlayOpen = shuffleQuestionOpen,
+                        overlayHasFocus = shuffleQuestionHasFocus.value,
+                        isBack = event.key == Key.Back,
+                    )
+                ) {
+                    return@onPreviewKeyEvent true
+                }
                 if (event.key != Key.Menu) return@onPreviewKeyEvent false
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent true
                 // A second press while the panel is already open does nothing, and MENU
                 // means nothing at all while the card menu is up.
-                if (!menu.isOpen && !periodsOpen) openPeriods(fromChip = false)
+                if (!menu.isOpen && !periodsOpen && !shuffleQuestionOpen) openPeriods(fromChip = false)
                 true
             },
     ) {
@@ -902,7 +1017,14 @@ fun SourceScreen(
                 header = header,
                 // Empty while a chip holds the highlight, because then no video is selected.
                 // Spec section 7.2, amended by ticket 16.
-                focusedTitle = { selectedVideo(videos, focusedIndex.intValue)?.title },
+                // The one chip with words of its own on this line. Build ticket 69, rule 11.
+                focusedTitle = {
+                    if (shuffleChipFocused.value) {
+                        shuffleHintLine(ready?.shufflePlayedCount() ?: 0)
+                    } else {
+                        selectedVideo(videos, focusedIndex.intValue)?.title
+                    }
+                },
                 // The one place a watch date appears. Spec section 7.3 took the text line off
                 // the card itself, because a label under one card's date made that whole grid
                 // row taller and left a gap under the other three.
@@ -972,7 +1094,7 @@ fun SourceScreen(
                 onChipFocused = {
                     focusedIndex.intValue = selectionAfterChipFocus(
                         selection = focusedIndex.intValue,
-                        overlayOpen = menu.isOpen || periodsOpen,
+                        overlayOpen = menu.isOpen || periodsOpen || shuffleQuestionOpen,
                     )
                 },
                 // `Down` from any chip goes to the first card of the grid, and scrolls there
@@ -980,6 +1102,25 @@ fun SourceScreen(
                 onDownToGrid = { firstCardIndex(videos.size)?.let { land(it, takeFocus = true) } },
                 autoplayNext = ready?.autoplayNext ?: StoredSource.AUTOPLAY_NEXT_DEFAULT,
                 onAutoplay = onToggleAutoplay,
+                shuffle = shuffleOn,
+                onShuffle = {
+                    // Nothing until the Source is `Ready`, for the reason `Order` gives.
+                    if (ready != null) {
+                        shuffleTurnedOn = !shuffleOn
+                        onToggleShuffle()
+                    }
+                },
+                onShuffleHold = {
+                    if (ready != null) {
+                        shuffleQuestionHasFocus.value = false
+                        shuffleQuestionOpen = true
+                    }
+                },
+                shuffleChipFocus = shuffleChipFocus,
+                onShuffleChipHighlightChanged = { holdsIt ->
+                    shuffleChipFocused.value = holdsIt
+                    chipHighlight.report(SHUFFLE_CHIP, holdsIt)
+                },
             )
 
             when (state) {
@@ -1007,7 +1148,13 @@ fun SourceScreen(
                                     watches,
                                     direction,
                                     ready?.lastPlayedVideoId,
+                                    shuffleNext,
                                 )
+                            }
+                            // A plain opening with Shuffle on rests on the run's next video,
+                            // and one press of OK there is a Shuffle play. Build ticket 69.
+                            LaunchedEffect(Unit) {
+                                shuffleArmed = shuffleArmedOnOpening(openAt, opening, shuffleNext, videos)
                             }
                             // **The grid has landed, so "since the screen landed" starts now.**
                             // Build ticket 55's rule counts keys from the landing, and its
@@ -1031,7 +1178,9 @@ fun SourceScreen(
                                 // A tap of the centre button plays. An In progress video
                                 // resumes; `Play from start` in the card menu is the only
                                 // way to ask for the beginning. Spec section 8.6.
-                                onSelect = { video -> onPlay(video, false) },
+                                onSelect = { video ->
+                                    onPlay(video, false, shuffleOn && video.videoId == shuffleArmed)
+                                },
                                 onHold = { index -> setMenu(CardMenu.Top(index)) },
                             )
                         }
@@ -1096,7 +1245,8 @@ fun SourceScreen(
                     },
                     onPlayFromStart = {
                         closeMenu()
-                        onPlay(video, true)
+                        // Chosen from a menu, so never a Shuffle play.
+                        onPlay(video, true, false)
                     },
                 )
             }
@@ -1123,6 +1273,20 @@ fun SourceScreen(
                     // scrolls and takes focus in one move, which is what spec section 7.4
                     // asks a chosen Period to do.
                     land(period.firstIndex, takeFocus = true)
+                },
+            )
+        }
+
+        if (shuffleQuestionOpen) {
+            ShuffleQuestionOverlay(
+                question = shuffleQuestion(ready?.shufflePlayedCount() ?: 0),
+                ink = ink,
+                hasFocus = shuffleQuestionHasFocus,
+                onKeep = { closeShuffleQuestion() },
+                onStartNew = {
+                    closeShuffleQuestion()
+                    say(NEW_SHUFFLE_RUN_STARTED)
+                    onStartNewShuffleRun()
                 },
             )
         }
@@ -1177,6 +1341,13 @@ private fun SourceHeader(
     // chip this screen ever asks for the highlight by name.
     onPeriodChipHighlightChanged: (Boolean) -> Unit,
     onAutoplay: () -> Unit,
+    // The `Shuffle` chip. A tap toggles it and a long press asks to start a new run. The long
+    // press never toggles. Build ticket 69.
+    shuffle: Boolean,
+    onShuffle: () -> Unit,
+    onShuffleHold: () -> Unit,
+    shuffleChipFocus: FocusRequester,
+    onShuffleChipHighlightChanged: (Boolean) -> Unit,
     // Any chip has taken the highlight, so the caller clears the selection. Every chip reports
     // it, because the rule is about the row and not about which chip on it.
     onChipFocused: () -> Unit,
@@ -1285,6 +1456,20 @@ private fun SourceHeader(
                 onSelect = onAutoplay,
                 onFocused = onChipFocused,
             )
+            // After `Autoplay`, at the end of the row, so no chip the household has learnt the
+            // place of moves. It follows `Autoplay`'s rule for its word and its fill, and one
+            // boolean feeds both. Build ticket 69, rule 1.
+            Chip(
+                shuffleChipLabel(shuffle),
+                ink,
+                fill = autoplayChipFill(shuffle),
+                focusRequester = shuffleChipFocus,
+                onSelect = onShuffle,
+                onHold = onShuffleHold,
+                onFocused = onChipFocused,
+                onHighlightChanged = onShuffleChipHighlightChanged,
+                testTag = TestTags.chip(SHUFFLE_CHIP),
+            )
         }
         Spacer(Modifier.height(14.dp))
     }
@@ -1362,6 +1547,12 @@ private fun Chip(
     // chip passes one, because it is the only chip a retry ladder ever asks for. Build ticket
     // 47.
     onHighlightChanged: (Boolean) -> Unit = {},
+    // A long press of OK. Only the `Shuffle` chip has one, and with it the chip acts on a tap
+    // and a hold through [onSelectOrHoldKey], so a hold never also toggles it. Build ticket 69.
+    onHold: (() -> Unit)? = null,
+    // The chip's test tag. It is its label for every chip but `Shuffle`, whose label changes
+    // with its state while a test needs to find the same node either way.
+    testTag: String = TestTags.chip(label),
 ) {
     // **Not keyed on `enabled`, since build ticket 47, and it used to be.** The reason it was
     // keyed is real and is now answered somewhere better. A chip disabled while it holds the
@@ -1383,7 +1574,7 @@ private fun Chip(
             // The chip that took the highlight is what build ticket 39's instrumentation test
             // is watching for, and its words are on a child node rather than on the focusable
             // one, so they cannot say which node holds the highlight. See [TestTags].
-            .testTag(TestTags.chip(label))
+            .testTag(testTag)
             .let { if (focusRequester == null) it else it.focusRequester(focusRequester) }
             .background(
                 color = when (paint.body) {
@@ -1405,7 +1596,13 @@ private fun Chip(
                 },
                 shape = RoundedCornerShape(20.dp),
             )
-            .then(if (enabled) Modifier.onSelectKey { onSelect() } else Modifier)
+            .then(
+                when {
+                    !enabled -> Modifier
+                    onHold != null -> Modifier.onSelectOrHoldKey(onSelect = onSelect, onHold = onHold)
+                    else -> Modifier.onSelectKey { onSelect() }
+                },
+            )
             // **Outside the `enabled` branch, and `MenuLine` and `PanelLine` are the same shape
             // for the same reason.** A chip disabled while it holds the highlight has to be
             // able to say that it lost it. With this modifier inside the branch, going disabled
@@ -2600,5 +2797,108 @@ private fun PeriodLine(
             style = Fonts.Meta,
             maxLines = 1,
         )
+    }
+}
+
+/**
+ * The question a long press on the `Shuffle` chip asks. Build ticket 69, rule 10.
+ *
+ * It follows the confirmation pattern of `Remove the saved key` on the Key screen: the question,
+ * then the answer that changes nothing, focused first, then the answer that acts. A press made
+ * without reading keeps the run.
+ *
+ * It is drawn the way the card menu is, over a scrim and with the same [MenuLine]s, and for the
+ * same reasons: a `Dialog` brings a second window with focus rules of its own, and the card
+ * menu's lines already carry every focus lesson this screen has learnt. The guard on the
+ * screen's outer `Box` keeps every key until a line holds the highlight, which is what stops
+ * the release of the long press from reaching the chip behind the scrim and toggling it.
+ *
+ * `BACK` is the caller's, which owns whether the question is open, and it keeps the run.
+ *
+ * @param hasFocus set as soon as a line takes the highlight, and read by that guard.
+ */
+@Composable
+private fun ShuffleQuestionOverlay(
+    question: String,
+    ink: Ink,
+    hasFocus: MutableState<Boolean>,
+    onKeep: () -> Unit,
+    onStartNew: () -> Unit,
+) {
+    val labels = listOf(KEEP_THIS_RUN, START_A_NEW_RUN)
+    val requesters = remember { List(labels.size) { FocusRequester() } }
+    val highlightOn = remember { HighlightRecord<Int>() }
+    val focusedLine = remember { mutableIntStateOf(0) }
+    val live = List(labels.size) { true }
+
+    // `Keep this run` takes the highlight first, by the same ladder the card menu uses.
+    LaunchedEffect(Unit) {
+        askUntilHighlightHolds(
+            wait = { millis -> delay(millis) },
+            ask = { runCatching { requesters[0].requestFocus() } },
+            holds = { highlightOn.holds(0) },
+        )
+        hasFocus.value = highlightOn.holdsAnything
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(ink.menuScrim)
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                val move = when (event.key) {
+                    Key.DirectionUp -> MenuMove.UP
+                    Key.DirectionDown -> MenuMove.DOWN
+                    Key.DirectionLeft, Key.DirectionRight,
+                    Key.ChannelUp, Key.ChannelDown, Key.PageUp, Key.PageDown,
+                    -> MenuMove.SIDEWAYS
+                    else -> return@onPreviewKeyEvent false
+                }
+                cardMenuKeepsKey(
+                    move = move,
+                    focusedLine = focusedLine.intValue,
+                    lineCount = labels.size,
+                    hasFocus = hasFocus.value,
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(min = 420.dp, max = 620.dp)
+                .background(ink.surfaceRaised, RoundedCornerShape(14.dp))
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = question,
+                color = ink.onSurface,
+                style = Fonts.FocusedTitle,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(6.dp))
+            labels.forEachIndexed { index, label ->
+                MenuLine(
+                    label = label,
+                    ink = ink,
+                    line = index,
+                    focusRequester = requesters[index],
+                    up = neighbourRequester(live, index, MenuMove.UP, requesters),
+                    down = neighbourRequester(live, index, MenuMove.DOWN, requesters),
+                    onHighlightChanged = { holdsIt ->
+                        highlightOn.report(index, holdsIt)
+                        if (holdsIt) focusedLine.intValue = index
+                        hasFocus.value = highlightOn.holdsAnything
+                    },
+                    onDestroyed = {
+                        highlightOn.reportDestroyed(node = index, replaced = false)
+                        hasFocus.value = highlightOn.holdsAnything
+                    },
+                    onChoose = { if (index == 0) onKeep() else onStartNew() },
+                )
+            }
+        }
     }
 }

@@ -251,7 +251,7 @@ class SourceKeyGuardTest {
                 sourceName = "A Source",
                 state = walkingSource,
                 thumbnails = NoThumbnails,
-                onPlay = { _, _ -> plays++ },
+                onPlay = { _, _, _ -> plays++ },
                 openAt = Landing.NEXT_UNWATCHED,
             )
         }

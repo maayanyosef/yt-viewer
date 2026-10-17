@@ -52,6 +52,9 @@ import local.youtubetv.data.SqliteSourceStore
 import local.youtubetv.data.SqliteWatchStore
 import local.youtubetv.data.PlayStep
 import local.youtubetv.data.RangeSide
+import local.youtubetv.data.ShuffleBack
+import local.youtubetv.data.ShuffleRun
+import local.youtubetv.data.previousPlayable
 import local.youtubetv.data.StoredSource
 import local.youtubetv.data.StoredVideo
 import local.youtubetv.data.WatchLog
@@ -68,6 +71,7 @@ import local.youtubetv.data.nextPlayableVideo
 import local.youtubetv.player.AfterVideo
 import local.youtubetv.player.COUNTDOWN_SECONDS
 import local.youtubetv.player.CountdownUi
+import local.youtubetv.player.FIRST_OF_SHUFFLE_RUN
 import local.youtubetv.player.HeldKeyGate
 import local.youtubetv.player.NO_NEXT_VIDEO
 import local.youtubetv.player.NO_PREVIOUS_VIDEO
@@ -513,6 +517,18 @@ class MainActivity : ComponentActivity() {
         val controller: PlayerController,
         val session: PlaybackSession,
         val model: SourceScreenModel,
+        /**
+         * Where in the Shuffle run's played list this video stands, when a press of previous
+         * brought the player here. Null otherwise. Build ticket 69, rule 8: a second press of
+         * previous goes on from here rather than from the newest play.
+         */
+        val shuffleAt: Int? = null,
+        /**
+         * True while this video is a Shuffle pick the autoplay-next countdown sits over, and
+         * so has not played yet. It is recorded in the run the moment it starts to play, and
+         * never if the household leaves the countdown. Build ticket 69.
+         */
+        var shufflePending: Boolean = false,
     )
 
     /**
@@ -754,7 +770,7 @@ class MainActivity : ComponentActivity() {
                                     val name = sourceNameOrId(row?.typedName, row?.title, sourceId)
                                     withContext(Dispatchers.Main) {
                                         closeAddSource()
-                                        openSource(sourceId, name, Landing.NEXT_UNWATCHED)
+                                        openSource(sourceId, name, Landing.DEFAULT)
                                     }
                                 }
                             },
@@ -833,6 +849,18 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onPlay = ::startPlayback,
+                            // The `Shuffle` chip writes the Source's row, exactly as
+                            // `Autoplay` does, so it goes the same way. Build ticket 69.
+                            onToggleShuffle = {
+                                lifecycleScope.launch(Dispatchers.IO) {
+                                    opened.model.toggleShuffle()
+                                }
+                            },
+                            onStartNewShuffleRun = {
+                                lifecycleScope.launch(Dispatchers.IO) {
+                                    opened.model.startNewShuffleRun()
+                                }
+                            },
                             // The `Order` chip writes the Source's row, so it goes on the
                             // Activity's scope and off the main thread, like a mark.
                             onFlipDirection = {
@@ -1382,7 +1410,7 @@ class MainActivity : ComponentActivity() {
      * Where it starts is decided here and not inside the player, because `Play from start` is
      * a choice made on the Source screen before the player exists. Spec section 8.6.
      */
-    private fun startPlayback(video: StoredVideo, playFromStart: Boolean) {
+    private fun startPlayback(video: StoredVideo, playFromStart: Boolean, byShuffle: Boolean) {
         if (playback != null) return
         if (video.videoId.isBlank()) return
 
@@ -1393,7 +1421,41 @@ class MainActivity : ComponentActivity() {
         // from a field. There is always one, because the only way to reach a video is
         // through a Source screen.
         val model = open?.model ?: return
-        show(video, playFromStart = playFromStart, pauseOnStart = false, model = model)
+        // With Shuffle on, every video started from the grid counts as played in the run,
+        // whether Shuffle chose it or the household pressed it by hand. Only one Shuffle chose
+        // carries the Shuffle mark. Build ticket 69, rules 6 and 7.
+        val shuffle = model.ready()?.shuffle == true
+        if (shuffle) recordInShuffleRun(model, video)
+        Log.i(
+            LOG_TAG,
+            when {
+                !shuffle -> "Play of ${video.videoId} from the grid."
+                byShuffle -> "Shuffle play of ${video.videoId}: the run's next video, pressed where Shuffle put it."
+                else -> "Play of ${video.videoId} pressed by hand with Shuffle on: an ordinary play."
+            },
+        )
+        show(
+            video,
+            playFromStart = playFromStart,
+            pauseOnStart = false,
+            model = model,
+            shufflePlay = shuffle && byShuffle,
+        )
+    }
+
+    /**
+     * The video counts as played in the Source's Shuffle run. Build ticket 69.
+     *
+     * The screen's state changes at once, on this thread. The row is written on
+     * [playbackWrites], the thread every play's own log write uses, so the run is down on disk
+     * in the order the plays happened.
+     */
+    private fun recordInShuffleRun(model: SourceScreenModel, video: StoredVideo) {
+        val run = model.recordShufflePlay(video.videoId) ?: return
+        playbackWrites.execute {
+            runCatching { model.saveShuffleRun(run) }
+                .onFailure { Log.w(LOG_TAG, "The Shuffle run was not written down.", it) }
+        }
     }
 
     /**
@@ -1418,6 +1480,9 @@ class MainActivity : ComponentActivity() {
         playFromStart: Boolean,
         pauseOnStart: Boolean,
         model: SourceScreenModel,
+        shufflePlay: Boolean = false,
+        shuffleAt: Int? = null,
+        shufflePending: Boolean = false,
     ) {
         val previous = playback
         if (previous != null) finishWrite { previous.session.onLeaving() }
@@ -1433,10 +1498,13 @@ class MainActivity : ComponentActivity() {
             // position for a video nobody watched, and move Last played onto it. Found by
             // `/code-review`.
             heldForCountdown = pauseOnStart,
+            // Its `played` entry carries the Shuffle mark, so the High-water mark ignores it.
+            // ADR 0002.
+            shuffle = shufflePlay,
             log = { line -> Log.i(LOG_TAG, line) },
             // The card behind the player already carries its green tick and its red In
             // progress bar by the time the household is back on the grid.
-            onWatchState = { state -> model.applyWatchState(state) },
+            onWatchState = { state -> model.applyWatchState(state, shufflePlay) },
         )
         currentSession = session
 
@@ -1458,7 +1526,7 @@ class MainActivity : ComponentActivity() {
         ).also { controller = it }
 
         page.load(video.videoId, resumeFrom ?: 0, video.durationSeconds, pauseOnStart)
-        playback = Playback(video, page, session, model)
+        playback = Playback(video, page, session, model, shuffleAt, shufflePending)
         endOfSource = false
         Log.i(
             LOG_TAG,
@@ -1514,11 +1582,18 @@ class MainActivity : ComponentActivity() {
         val current = playback ?: return
         // This video's own Source, carried by the play, not a field. See [Playback].
         val ready = current.model.ready()
-        val next = nextPlayableVideo(
-            videos = ready?.videos.orEmpty(),
-            fromVideoId = current.video.videoId,
-            step = PlayStep.NEXT,
-        )
+        // With Shuffle on, the next video is the run's next one, which is random and never
+        // runs out: a finished run starts the next at once. Build ticket 69, rule 9.
+        val shuffle = ready?.shuffle == true
+        val next = if (shuffle) {
+            shuffleNextFrom(current)
+        } else {
+            nextPlayableVideo(
+                videos = ready?.videos.orEmpty(),
+                fromVideoId = current.video.videoId,
+                step = PlayStep.NEXT,
+            )
+        }
         val unattended = isUnattended(
             lastKeyAtMillis = lastKeyAtMillis,
             nowMillis = SystemClock.elapsedRealtime(),
@@ -1536,6 +1611,8 @@ class MainActivity : ComponentActivity() {
                     playFromStart = false,
                     pauseOnStart = true,
                     model = current.model,
+                    shufflePlay = shuffle,
+                    shufflePending = shuffle,
                 )
                 startCountdown(ending.next)
             }
@@ -1569,6 +1646,10 @@ class MainActivity : ComponentActivity() {
      */
     private fun stepVideo(step: PlayStep) {
         val current = playback ?: return
+        if (current.model.ready()?.shuffle == true) {
+            stepShuffle(current, step)
+            return
+        }
         val videos = current.model.ready()?.videos.orEmpty()
         val target = nextPlayableVideo(videos, current.video.videoId, step)
         if (target == null) {
@@ -1592,6 +1673,84 @@ class MainActivity : ComponentActivity() {
         if (counting) startCountdown(target) else cancelCountdown()
     }
 
+    /**
+     * The run's next video from the one on screen, or null when there is none. Build ticket 69.
+     *
+     * A video the countdown sits over has not played yet, so it is handed in as `besides`: next
+     * from it is the video after it, and not itself.
+     */
+    private fun shuffleNextFrom(current: Playback): StoredVideo? {
+        val ready = current.model.ready() ?: return null
+        val besides = if (current.shufflePending) current.video.videoId else null
+        return ready.shuffleNext(besides)
+    }
+
+    /**
+     * Next and previous with Shuffle on. Build ticket 69, rules 2 and 8.
+     *
+     * - Next is the run's next video, picked at random among the videos not yet played.
+     * - Previous goes back through the run, in the order the videos played. On the run's first
+     *   video it says so and stays.
+     *
+     * Both are Shuffle plays. During a countdown the target is loaded and the countdown starts
+     * again, exactly as it does without Shuffle.
+     */
+    private fun stepShuffle(current: Playback, step: PlayStep) {
+        val ready = current.model.ready() ?: return
+        val counting = countdown != null
+        val target: StoredVideo
+        var at: Int? = null
+        if (step == PlayStep.NEXT) {
+            target = shuffleNextFrom(current) ?: run {
+                Log.i(LOG_TAG, "No Shuffle next from ${current.video.videoId}: $NO_NEXT_VIDEO")
+                say(NO_NEXT_VIDEO)
+                return
+            }
+        } else {
+            val run = ready.shuffleRun ?: ShuffleRun(seed = 0)
+            when (val back = run.previousPlayable(current.video.videoId, current.shuffleAt, ready.shufflePlayable())) {
+                ShuffleBack.FirstOfRun -> {
+                    Log.i(LOG_TAG, "Shuffle previous from ${current.video.videoId}: $FIRST_OF_SHUFFLE_RUN")
+                    say(FIRST_OF_SHUFFLE_RUN)
+                    return
+                }
+                is ShuffleBack.To -> {
+                    target = ready.videos.firstOrNull { it.videoId == back.videoId } ?: return
+                    at = back.at
+                }
+            }
+        }
+        // A fresh pick is new to the run. A step back is a video the run already holds.
+        val fresh = step == PlayStep.NEXT
+        Log.i(
+            LOG_TAG,
+            "Shuffle ${if (fresh) "next" else "previous"} from ${current.video.videoId} is " +
+                "${target.videoId}.",
+        )
+        show(
+            target,
+            playFromStart = false,
+            pauseOnStart = counting,
+            model = current.model,
+            shufflePlay = true,
+            shuffleAt = at,
+            shufflePending = fresh && counting,
+        )
+        if (fresh && !counting) recordInShuffleRun(current.model, target)
+        if (counting) startCountdown(target) else cancelCountdown()
+    }
+
+    /**
+     * The video the countdown sat over starts to play, so a Shuffle pick counts as played in
+     * the run now and not before. Build ticket 69.
+     */
+    private fun releasePendingShuffle() {
+        val current = playback ?: return
+        if (!current.shufflePending) return
+        current.shufflePending = false
+        recordInShuffleRun(current.model, current.video)
+    }
+
     /** Counts five seconds over the paused next video, and then plays it. Spec section 8.6. */
     private fun startCountdown(next: StoredVideo) {
         countdownJob?.cancel()
@@ -1601,6 +1760,7 @@ class MainActivity : ComponentActivity() {
                 delay(1_000)
             }
             countdown = null
+            releasePendingShuffle()
             // Released before it plays, not after, so the very first tick of the play it is
             // now allowed to write is written.
             playback?.session?.release()
@@ -1641,6 +1801,7 @@ class MainActivity : ComponentActivity() {
     private fun playCountdownNow() {
         val next = countdown?.next ?: return
         cancelCountdown()
+        releasePendingShuffle()
         playback?.session?.release()
         playback?.controller?.play()
         Log.i(LOG_TAG, "Countdown cut short, playing ${next.videoId} now.")

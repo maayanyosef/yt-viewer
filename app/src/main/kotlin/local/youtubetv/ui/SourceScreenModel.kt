@@ -1,6 +1,7 @@
 package local.youtubetv.ui
 
 import java.time.Instant
+import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +15,7 @@ import local.youtubetv.data.Derivation
 import local.youtubetv.data.Direction
 import local.youtubetv.data.KeptVideo
 import local.youtubetv.data.RangeSide
+import local.youtubetv.data.ShuffleRun
 import local.youtubetv.data.SourceStore
 import local.youtubetv.data.StoredSource
 import local.youtubetv.data.StoredVideo
@@ -24,6 +26,8 @@ import local.youtubetv.data.clearedNewlyListed
 import local.youtubetv.data.isListed
 import local.youtubetv.data.nextUnwatchedLanding
 import local.youtubetv.data.orderByPublishDate
+import local.youtubetv.data.shuffleNextIndex
+import local.youtubetv.data.shufflePlayable
 import local.youtubetv.walk.SourceWalk
 import local.youtubetv.walk.walkCostLine
 import local.youtubetv.youtube.YouTubeApiException
@@ -104,7 +108,38 @@ sealed interface SourceScreenState {
          * `cardMenuSubLines`.
          */
         val walking: WalkProgress? = null,
-    ) : SourceScreenState
+        /**
+         * Whether Shuffle is on for this Source. Build ticket 69.
+         *
+         * Read from the Source's own row and written back by [SourceScreenModel.toggleShuffle],
+         * exactly as [autoplayNext] is.
+         */
+        val shuffle: Boolean = false,
+        /**
+         * Where this Source's Shuffle run is up to, or null when it has never had one.
+         *
+         * Read from the Source's own row. It changes when a play is recorded in it, by
+         * [SourceScreenModel.recordShufflePlay], and when the household starts a new run, by
+         * [SourceScreenModel.startNewShuffleRun]. A Source with Shuffle on always has one.
+         */
+        val shuffleRun: ShuffleRun? = null,
+    ) : SourceScreenState {
+
+        /** The videos a Shuffle run picks from. See [shufflePlayable]. */
+        fun shufflePlayable(): List<String> = shufflePlayable(videos)
+
+        /**
+         * The run's next video, or null when Shuffle is off or there is none. [besides] is
+         * passed on to [shuffleNextIndex], which is where the rule is written.
+         */
+        fun shuffleNext(besides: String? = null): StoredVideo? {
+            if (!shuffle) return null
+            return shuffleNextIndex(videos, shuffleRun, besides)?.let(videos::get)
+        }
+
+        /** How many videos have played in the run, for the hint line and the question. */
+        fun shufflePlayedCount(): Int = shuffleRun?.playedCount(shufflePlayable()) ?: 0
+    }
 
     /**
      * How far the first walk has got, for the quiet `loading 400 of 3,000` line.
@@ -142,6 +177,8 @@ class SourceScreenModel(
     private val watches: WatchLog,
     private val log: (String) -> Unit = {},
     private val now: () -> Instant = Instant::now,
+    /** Where a new Shuffle run's seed comes from. A test hands in a fixed one. */
+    private val newShuffleSeed: () -> Long = { Random.nextLong() },
 ) {
 
     private val mutableState = MutableStateFlow<SourceScreenState>(SourceScreenState.Starting)
@@ -301,7 +338,21 @@ class SourceScreenModel(
             direction = walkedBefore.direction,
             lastPlayedVideoId = found.lastPlayedVideoId,
             autoplayNext = walkedBefore.autoplayNext,
+            shuffle = walkedBefore.shuffle,
+            shuffleRun = shuffleRunOf(walkedBefore),
         )
+    }
+
+    /**
+     * The Source's Shuffle run, made and written down first when Shuffle is on and there is
+     * none. Build ticket 69. A Source with Shuffle on always has a run, so its next video is
+     * the same on every opening.
+     */
+    private fun shuffleRunOf(row: StoredSource): ShuffleRun? {
+        if (row.shuffleRun != null || !row.shuffle) return row.shuffleRun
+        val run = ShuffleRun.fresh(newShuffleSeed())
+        store.setShuffleRun(sourceId, run)
+        return run
     }
 
     /** The Source has never been walked, so this walks it. Spec section 6.5. */
@@ -357,8 +408,14 @@ class SourceScreenModel(
                         direction = added?.direction ?: Direction.NEWEST_FIRST,
                         lastPlayedVideoId = current?.lastPlayedVideoId
                             ?: ofSource.lastPlayedVideoId,
-                        autoplayNext = added?.autoplayNext
+                        // Carried from the screen once a batch has put it there, so a chip
+                        // pressed during the walk is not undone by the next batch. Found by
+                        // `/code-review` on build ticket 69.
+                        autoplayNext = current?.autoplayNext
+                            ?: added?.autoplayNext
                             ?: StoredSource.AUTOPLAY_NEXT_DEFAULT,
+                        shuffle = current?.shuffle ?: added?.shuffle ?: false,
+                        shuffleRun = current?.shuffleRun ?: added?.let(::shuffleRunOf),
                         walking = SourceScreenState.WalkProgress(loadedSoFar, totalSoFar),
                     )
                 },
@@ -431,6 +488,10 @@ class SourceScreenModel(
                 direction = direction,
                 lastPlayedVideoId = found.lastPlayedVideoId,
                 autoplayNext = autoplayNext,
+                shuffle = existing.shuffle,
+                // The screen's run first, for the reason [reloadFromStorage] gives.
+                shuffleRun = (mutableState.value as? SourceScreenState.Ready)?.shuffleRun
+                    ?: shuffleRunOf(existing),
             )
         } catch (failure: YouTubeApiException) {
             // The message is Google's own text. It is capped because it is the one string
@@ -479,6 +540,14 @@ class SourceScreenModel(
             direction = stored.direction,
             lastPlayedVideoId = found.lastPlayedVideoId,
             autoplayNext = stored.autoplayNext,
+            shuffle = stored.shuffle,
+            // Carried over from the screen, and read from the row only when the screen has
+            // none. Every change to the run is made on the screen first, and a play's row
+            // write is queued behind it, so the row can be one play behind and never ahead.
+            // Taking the row would forget a play still waiting to be written, and autoplay-next
+            // would count down to the video that just played. Found by `/code-review` on build
+            // ticket 69.
+            shuffleRun = current.shuffleRun ?: shuffleRunOf(stored),
         )
     }
 
@@ -544,6 +613,80 @@ class SourceScreenModel(
         mutableState.value = current.copy(autoplayNext = next)
         log("Autoplay-next on $sourceId is now ${if (next) "on" else "off"}.")
         next
+    }
+
+    /**
+     * The household pressed the `Shuffle` chip, so this Source turns Shuffle around. Build
+     * ticket 69.
+     *
+     * The same two writes in the same order as [toggleAutoplayNext]. Turning it on for a
+     * Source that has never had a run makes one and writes it down, so the run's next video,
+     * which the screen moves the highlight to, is the same video the next opening names.
+     * Turning it off leaves the run exactly where it is: it survives Shuffle being turned off
+     * and on again.
+     *
+     * @return what Shuffle is now, or null when there was nothing on screen to change.
+     */
+    suspend fun toggleShuffle(): Boolean? = marking.withLock {
+        val current = mutableState.value as? SourceScreenState.Ready ?: return@withLock null
+        val next = !current.shuffle
+        store.setShuffle(sourceId, next)
+        val run = if (next && current.shuffleRun == null) {
+            ShuffleRun.fresh(newShuffleSeed()).also { store.setShuffleRun(sourceId, it) }
+        } else {
+            current.shuffleRun
+        }
+        mutableState.value = current.copy(shuffle = next, shuffleRun = run)
+        log("Shuffle on $sourceId is now ${if (next) "on" else "off"}.")
+        next
+    }
+
+    /**
+     * The household chose `Start a new run`. Build ticket 69, rule 10.
+     *
+     * The old run is forgotten: the new one has a new seed and has played nothing. Its first
+     * video is never the old run's last, by the same rule a run that finished on its own
+     * follows. **No Watch is touched**: the run is on the Source's row and the log is not
+     * opened at all. It works whether Shuffle is on or off.
+     *
+     * @return the new run, or null when there was nothing on screen.
+     */
+    suspend fun startNewShuffleRun(): ShuffleRun? = marking.withLock {
+        val current = mutableState.value as? SourceScreenState.Ready ?: return@withLock null
+        val run = ShuffleRun.fresh(newShuffleSeed(), current.shuffleRun, current.shufflePlayable())
+        store.setShuffleRun(sourceId, run)
+        mutableState.value = current.copy(shuffleRun = run)
+        log(
+            "A new Shuffle run started on $sourceId. The old one had played " +
+                "${current.shufflePlayedCount()} videos.",
+        )
+        run
+    }
+
+    /**
+     * A video started playing while Shuffle is on, chosen by Shuffle or pressed by hand, so it
+     * counts as played in the run. Build ticket 69, rules 4 and 6.
+     *
+     * **Only the screen's state changes here.** It is called on the main thread from the
+     * player, and a SQLite write there is a dropped frame, so the caller writes the returned
+     * run down off the main thread with [saveShuffleRun]. It does not take the lock, for the
+     * reason [applyWatchState] gives: the player covers the whole screen, so the chips and the
+     * card menu cannot be reached while it runs.
+     *
+     * @return the run to write down, or null when Shuffle is off or nothing is on screen.
+     */
+    fun recordShufflePlay(videoId: String): ShuffleRun? {
+        val current = mutableState.value as? SourceScreenState.Ready ?: return null
+        if (!current.shuffle) return null
+        val before = current.shuffleRun ?: ShuffleRun.fresh(newShuffleSeed())
+        val run = before.played(videoId, current.shufflePlayable())
+        mutableState.value = current.copy(shuffleRun = run)
+        return run
+    }
+
+    /** Writes a run [recordShufflePlay] returned. Call it off the main thread. */
+    fun saveShuffleRun(run: ShuffleRun) {
+        store.setShuffleRun(sourceId, run)
     }
 
     /**
@@ -631,8 +774,22 @@ class SourceScreenModel(
      * In progress bar are already right when the household presses `BACK`. Only this video's
      * row is replaced; the rest of the map is carried over rather than read again.
      */
-    fun applyWatchState(state: WatchState) {
+    fun applyWatchState(state: WatchState, shufflePlay: Boolean = false) {
         val current = mutableState.value as? SourceScreenState.Ready ?: return
+        // **A Shuffle play keeps the mark the screen already holds.** [state] is worked out from
+        // the entries naming this video, and a Bulk mark names none, so its
+        // `countsForHighWaterMark` can disagree with the whole log. A Shuffle play never changes
+        // that answer (ADR 0002), so the answer from before the play is still the right one. An
+        // ordinary play is the newest entry and makes the video a mark whatever came before, so
+        // its own answer is right as it is. Found by `/code-review` on build ticket 69.
+        val forScreen = if (shufflePlay) {
+            state.copy(
+                countsForHighWaterMark =
+                    current.watches[state.videoId]?.countsForHighWaterMark == true,
+            )
+        } else {
+            state
+        }
         // A play moves Last played, and it has to move now rather than at the next launch, or
         // `Jump to last played` would still point at the video before this one. The rule is
         // `lastPlayedVideoId`'s and is applied here rather than read from storage again: a
@@ -656,7 +813,7 @@ class SourceScreenModel(
         }
         mutableState.value = current.copy(
             videos = stillNewlyListed,
-            watches = current.watches + (state.videoId to state),
+            watches = current.watches + (state.videoId to forScreen),
             lastPlayedVideoId = if (played) state.videoId else current.lastPlayedVideoId,
         )
     }

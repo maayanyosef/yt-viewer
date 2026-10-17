@@ -125,6 +125,43 @@ class FirstWalkTest {
     }
 
     @Test
+    fun `Shuffle turned on during the walk stays on through the batches after it`() {
+        // Build ticket 69. Every batch used to build the screen from the row read before the
+        // walk, so the next batch turned the chip back off. Found by `/code-review`.
+        addSource()
+        val seen = mutableListOf<Boolean?>()
+        lateinit var model: SourceScreenModel
+        var calls = 0
+        val watched = object : FakeYouTubeApi(
+            playlists = mapOf(CURATED to refs),
+            videos = refs.associate { it.videoId to normalVideo(it.videoId) },
+        ) {
+            override suspend fun videos(videoIds: List<String>): List<VideoDetails> {
+                calls++
+                // Between the first batch and the second, the household turns Shuffle on.
+                if (calls == 2) model.toggleShuffle()
+                seen += (model.state.value as? SourceScreenState.Ready)?.shuffle
+                return super.videos(videoIds)
+            }
+        }
+        model = SourceScreenModel(
+            sourceId = CURATED,
+            store = store,
+            walk = SourceWalk(watched),
+            watches = watches,
+            log = { log += it },
+            now = { WALKED_AT },
+        )
+
+        runBlocking { model.load() }
+
+        assertEquals(listOf(null, true, true), seen)
+        val ready = model.state.value as SourceScreenState.Ready
+        assertTrue(ready.shuffle)
+        assertEquals(store.source(CURATED)!!.shuffleRun, ready.shuffleRun)
+    }
+
+    @Test
     fun `a walk in progress is a Ready state carrying its progress`() {
         addSource()
         val seen = mutableListOf<SourceScreenState>()

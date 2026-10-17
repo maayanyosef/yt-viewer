@@ -339,9 +339,11 @@ fun HomeScreen(
                     refocusRequests = refocusRequests,
                     focusedSourceId = focusedSourceId,
                     requesters = railRequesters,
+                    // A plain press asks for no landing by name, so with Shuffle on the Source
+                    // opens on its run's next video. Build ticket 69.
                     onSelect = { card ->
-                        onAction(railOpenLine(card, Landing.NEXT_UNWATCHED))
-                        onOpen(card, Landing.NEXT_UNWATCHED)
+                        onAction(railOpenLine(card, Landing.DEFAULT))
+                        onOpen(card, Landing.DEFAULT)
                     },
                     onHold = { card -> menuFor = card.sourceId },
                     onAddSource = onAddSource,

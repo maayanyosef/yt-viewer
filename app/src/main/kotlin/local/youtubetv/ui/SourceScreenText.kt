@@ -265,6 +265,15 @@ const val NEXT_UNWATCHED_CHIP = "Next unwatched"
 const val PERIOD_CHIP = "Period"
 
 /**
+ * The `Shuffle` chip's name, which is not the words on it. Build ticket 69.
+ *
+ * The chip reads `Shuffle: On` or `Shuffle: Off`, so its words change with its state. This is
+ * the one fixed name for it, used for its test tag and for the screen's record of which chip
+ * holds the highlight.
+ */
+const val SHUFFLE_CHIP = "Shuffle"
+
+/**
  * What the Source screen draws in place of the grid when the Source lists no video.
  *
  * It was a bare literal inside `ui/SourceScreen.kt` until build ticket 52, which needed to name
@@ -321,6 +330,57 @@ const val NO_VIDEOS_MESSAGE = "This Source lists no videos."
  */
 fun autoplayChipLabel(autoplayNext: Boolean): String =
     if (autoplayNext) "Autoplay: On" else "Autoplay: Off"
+
+/**
+ * What the `Shuffle` chip says. Build ticket 69, rule 1.
+ *
+ * It follows `Autoplay`'s label rule exactly: it names what the chip **is**, in its word, and
+ * the fill says the same thing again. One boolean feeds both, through this and
+ * [autoplayChipFill], so the two cannot disagree. The chip says nothing else: the count and the
+ * long press are on the hint line, [shuffleHintLine].
+ */
+fun shuffleChipLabel(shuffle: Boolean): String = if (shuffle) "Shuffle: On" else "Shuffle: Off"
+
+/**
+ * The line under the Source's name while the `Shuffle` chip holds the highlight. Build ticket
+ * 69, rule 11.
+ *
+ * Spec section 7.2 leaves that line empty while a chip holds the highlight, because then no
+ * video is selected. The `Shuffle` chip is the one exception, because a long press is not
+ * something a household finds on its own.
+ *
+ * @param played how many videos have played in the run, by [local.youtubetv.data.ShuffleRun.playedCount].
+ */
+fun shuffleHintLine(played: Int): String =
+    "Hold OK to start a new Shuffle run. ${shufflePlayedCount(played)} played in this run."
+
+/**
+ * The question a long press on the `Shuffle` chip asks. Build ticket 69, rule 10.
+ *
+ * **A run that has played nothing yet gets its own sentence**, because "the 0 videos already
+ * played can play again" promises something that does not exist. That wording is this
+ * ticket's decision. The ticket gave only the sentence with a count.
+ */
+fun shuffleQuestion(played: Int): String =
+    if (played == 0) {
+        "Start a new Shuffle run? No video has played in this run yet."
+    } else if (played == 1) {
+        "Start a new Shuffle run? The 1 video already played in this run can play again."
+    } else {
+        "Start a new Shuffle run? The ${played.grouped()} videos already played in this run can play again."
+    }
+
+/** The answer that changes nothing. It is first, and it holds the highlight when asked. */
+const val KEEP_THIS_RUN = "Keep this run"
+
+/** The answer that forgets the run's played videos. It never changes a Watch. */
+const val START_A_NEW_RUN = "Start a new run"
+
+/** What the toast says when a new run has been started. */
+const val NEW_SHUFFLE_RUN_STARTED = "A new Shuffle run has started."
+
+private fun shufflePlayedCount(played: Int): String =
+    if (played == 1) "1 video" else "${played.grouped()} videos"
 
 /**
  * The card menu line that opens the Period jump list.
