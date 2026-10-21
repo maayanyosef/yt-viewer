@@ -50,6 +50,7 @@ import local.youtubetv.apikey.firstScreen
 import local.youtubetv.apikey.keyPageUrl
 import local.youtubetv.apikey.newKeyPageToken
 import local.youtubetv.data.Landing
+import local.youtubetv.data.PlaybackSettings
 import local.youtubetv.data.SourceCard
 import local.youtubetv.data.SqliteSourceStore
 import local.youtubetv.data.SqliteWatchStore
@@ -888,6 +889,7 @@ class MainActivity : ComponentActivity() {
                             remoteAddress = remoteAddress,
                             childMode = childMode,
                             onSetChildMode = ::switchChildMode,
+                            onSetPlayback = ::setSourcePlayback,
                             // One `range` entry. On the Activity's scope and off the main
                             // thread, exactly like every other write to the household's log.
                             onMarkEverythingUnwatched = { card ->
@@ -1581,6 +1583,12 @@ class MainActivity : ComponentActivity() {
         upNext = null
 
         val resumeFrom = resumeFromSeconds(model.watchState(video.videoId), playFromStart)
+        // How this Source plays. Fork 0.5. The picture cap is the Source's own when it has
+        // one, else the app's; a video started from the beginning starts past the intro.
+        val playbackSettings = model.ready()?.playback ?: PlaybackSettings.DEFAULT
+        val sourceQuality = playbackSettings.qualityName
+            ?.let { name -> VideoQuality.entries.firstOrNull { it.name == name } }
+            ?: videoQuality
         val session = PlaybackSession(
             video = video,
             watches = watches,
@@ -1594,6 +1602,7 @@ class MainActivity : ComponentActivity() {
             // Its `played` entry carries the Shuffle mark, so the High-water mark ignores it.
             // ADR 0002.
             shuffle = shufflePlay,
+            skipEndSeconds = playbackSettings.skipEndSeconds,
             log = { line -> Log.i(LOG_TAG, line) },
             // The card behind the player already carries its green tick and its red In
             // progress bar by the time the household is back on the grid.
@@ -1605,7 +1614,7 @@ class MainActivity : ComponentActivity() {
 
         val page = controller ?: PlayerController(
             context = this,
-            quality = videoQuality,
+            quality = sourceQuality,
             // The session is read at the moment the event arrives, never captured. One page
             // now outlives many plays, so a captured session would go on taking the ticks of
             // whatever video came after it.
@@ -1628,7 +1637,13 @@ class MainActivity : ComponentActivity() {
             },
         ).also { controller = it }
 
-        page.load(video.videoId, resumeFrom ?: 0, video.durationSeconds, pauseOnStart)
+        page.load(
+            video.videoId,
+            resumeFrom ?: playbackSettings.skipStartSeconds,
+            video.durationSeconds,
+            pauseOnStart,
+            rate = playbackSettings.rate,
+        )
         playback = Playback(video, page, session, model, shuffleAt, shufflePending)
         endOfSource = false
         Log.i(
@@ -1740,6 +1755,9 @@ class MainActivity : ComponentActivity() {
             }
             AfterVideo.EndOfSource -> {
                 Log.i(LOG_TAG, "End of the Source after ${current.video.videoId}. No wrap-around.")
+                // A video that ended by `Skip the end` is still playing its outro behind the
+                // panel. The player's own end has already stopped. Fork 0.5.
+                current.controller.pause()
                 endOfSource = true
             }
             is AfterVideo.Unattended -> {
@@ -2029,6 +2047,19 @@ class MainActivity : ComponentActivity() {
             nowMillis = SystemClock.elapsedRealtime(),
             childMode = childMode,
         )
+    }
+
+    /**
+     * The household changed how a Source plays, on the home menu's playback panel. Fork 0.5.
+     *
+     * Through the Source's kept model when there is one, so an open or recently open Source
+     * screen agrees with the row; straight to the row otherwise. The next play reads it.
+     */
+    private fun setSourcePlayback(sourceId: String, playback: PlaybackSettings) {
+        val model = sourceModels[sourceId]
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (model != null) model.setPlayback(playback) else sources.setPlaybackSettings(sourceId, playback)
+        }
     }
 
     private fun switchChildMode(on: Boolean) {

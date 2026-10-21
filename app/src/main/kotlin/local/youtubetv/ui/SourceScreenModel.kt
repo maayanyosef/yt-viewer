@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
 import local.youtubetv.data.DERIVATION_VERSION
 import local.youtubetv.data.Derivation
 import local.youtubetv.data.Direction
+import local.youtubetv.data.PlaybackSettings
 import local.youtubetv.data.KeptVideo
 import local.youtubetv.data.RangeSide
 import local.youtubetv.data.ShuffleRun
@@ -123,6 +124,8 @@ sealed interface SourceScreenState {
          * [SourceScreenModel.startNewShuffleRun]. A Source with Shuffle on always has one.
          */
         val shuffleRun: ShuffleRun? = null,
+        /** How this Source plays. Read from its row, written by [SourceScreenModel.setPlayback]. Fork 0.5. */
+        val playback: PlaybackSettings = PlaybackSettings.DEFAULT,
     ) : SourceScreenState {
 
         /** The videos a Shuffle run picks from. See [shufflePlayable]. */
@@ -340,6 +343,7 @@ class SourceScreenModel(
             autoplayNext = walkedBefore.autoplayNext,
             shuffle = walkedBefore.shuffle,
             shuffleRun = shuffleRunOf(walkedBefore),
+            playback = walkedBefore.playback,
         )
     }
 
@@ -416,6 +420,7 @@ class SourceScreenModel(
                             ?: StoredSource.AUTOPLAY_NEXT_DEFAULT,
                         shuffle = current?.shuffle ?: added?.shuffle ?: false,
                         shuffleRun = current?.shuffleRun ?: added?.let(::shuffleRunOf),
+                        playback = current?.playback ?: added?.playback ?: PlaybackSettings.DEFAULT,
                         walking = SourceScreenState.WalkProgress(loadedSoFar, totalSoFar),
                     )
                 },
@@ -492,6 +497,7 @@ class SourceScreenModel(
                 // The screen's run first, for the reason [reloadFromStorage] gives.
                 shuffleRun = (mutableState.value as? SourceScreenState.Ready)?.shuffleRun
                     ?: shuffleRunOf(existing),
+                playback = existing.playback,
             )
         } catch (failure: YouTubeApiException) {
             // The message is Google's own text. It is capped because it is the one string
@@ -548,6 +554,7 @@ class SourceScreenModel(
             // would count down to the video that just played. Found by `/code-review` on build
             // ticket 69.
             shuffleRun = current.shuffleRun ?: shuffleRunOf(stored),
+            playback = stored.playback,
         )
     }
 
@@ -627,6 +634,17 @@ class SourceScreenModel(
      *
      * @return what Shuffle is now, or null when there was nothing on screen to change.
      */
+    /**
+     * The household changed how this Source plays, on the home menu's playback panel. Fork 0.5.
+     * The same two writes in the same order as [toggleAutoplayNext].
+     */
+    suspend fun setPlayback(playback: PlaybackSettings) = marking.withLock {
+        store.setPlaybackSettings(sourceId, playback)
+        val current = mutableState.value as? SourceScreenState.Ready ?: return@withLock
+        mutableState.value = current.copy(playback = playback)
+        log("Playback of $sourceId is now $playback.")
+    }
+
     suspend fun toggleShuffle(): Boolean? = marking.withLock {
         val current = mutableState.value as? SourceScreenState.Ready ?: return@withLock null
         val next = !current.shuffle

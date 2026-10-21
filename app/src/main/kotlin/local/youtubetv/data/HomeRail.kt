@@ -59,6 +59,8 @@ data class SourceCard(
     val lastPlayedVideoId: String?,
     val everythingUnwatchedCount: Int?,
     val walked: Boolean,
+    /** How the Source plays, for the home menu's playback panel. Fork 0.5. */
+    val playback: PlaybackSettings = PlaybackSettings.DEFAULT,
 )
 
 /**
@@ -231,6 +233,7 @@ fun railCard(
     // in that window would be lying about a Source nobody has opened. See
     // [StoredSource.lastWalkedAt].
     walked = stored?.lastWalkedAt != null,
+    playback = stored?.playback ?: PlaybackSettings.DEFAULT,
 )
 
 /**

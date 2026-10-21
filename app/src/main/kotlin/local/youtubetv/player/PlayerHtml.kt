@@ -181,6 +181,7 @@ function onYouTubeIframeAPIReady() {
         // reached the new video yet, so it is asked for again the first time the new video
         // really starts playing. Spec section 8.6.
         if (e.data === 1 && pendingPause) { pendingPause = false; ytPause(); }
+        if (e.data === 1 && currentRate !== 1) { safe(function () { player.setPlaybackRate(currentRate); }); }
         report('state', { code: e.data });
         if (e.data === 0) { report('ended', {}); }
       },
@@ -260,13 +261,19 @@ var SEEK_END_MARGIN = 2;
 // autoplay-next countdown plays behind.
 var pendingPause = false;
 
-function ytLoad(videoId, startSeconds, durationSeconds, gen, pauseOnStart) {
+// The Source's speed. Asked for after every load and again on the first PLAYING, because the
+// player builds a new video module per load and a rate asked for too early does not stick.
+var currentRate = 1;
+
+function ytLoad(videoId, startSeconds, durationSeconds, gen, pauseOnStart, rate) {
   if (!player) { return; }
   contentDuration = durationSeconds || 0;
   seekTarget = null;
   loadGen = gen || 0;
   pendingPause = pauseOnStart ? true : false;
+  currentRate = rate || 1;
   safe(function () { player.loadVideoById({ videoId: videoId, startSeconds: startSeconds || 0 }); });
+  safe(function () { player.setPlaybackRate(currentRate); });
   // Asked for at once as well as on the first PLAYING, because the wall is replaced by the
   // new video's own first frame and the household must not hear two seconds of it.
   if (pendingPause) { safe(function () { player.pauseVideo(); }); }

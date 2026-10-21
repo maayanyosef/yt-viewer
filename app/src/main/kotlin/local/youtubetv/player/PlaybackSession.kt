@@ -68,6 +68,11 @@ class PlaybackSession(
      * it never moves the High-water mark. Build ticket 69 and ADR 0002.
      */
     private val shuffle: Boolean = false,
+    /**
+     * How many seconds before the end this video counts as finished. Fork 0.5. The Source's
+     * `Skip the end` setting: an outro nobody watches. Zero is the whole video.
+     */
+    private val skipEndSeconds: Int = 0,
     private val log: (String) -> Unit = {},
     private val onWatchState: (state: WatchState, shufflePlay: Boolean) -> Unit = { _, _ -> },
 ) {
@@ -207,6 +212,18 @@ class PlaybackSession(
             log("Playback quality of ${video.videoId} is now $quality.")
         }
         if (tick.playing) record(force = false)
+
+        // The Source skips its videos' ends, and this one has reached the skip. It ends here,
+        // exactly as if the player had said so: the entry is completed, and the Activity's
+        // chain moves on. Fork 0.5.
+        val duration = video.durationSeconds
+        if (skipEndSeconds > 0 && tick.playing && !mutableState.value.finished &&
+            duration != null && duration > skipEndSeconds &&
+            tick.positionSeconds >= duration - skipEndSeconds
+        ) {
+            log("Skipping the last $skipEndSeconds s of ${video.videoId}: it ends at ${clock(tick.positionSeconds)}.")
+            onEnded()
+        }
     }
 
     private fun onState(event: PlayerEvent.State) {

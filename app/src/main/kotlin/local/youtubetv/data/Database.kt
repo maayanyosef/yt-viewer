@@ -39,6 +39,7 @@ private const val DATABASE_NAME = "youtube-tv.db"
  * | 10 | Ticket 40: `videos.newly_listed`, whether a walk has only just listed this video. |
  * | 11 | Ticket 59: `videos.view_count`, YouTube's own view count for this video. |
  * | 12 | Ticket 69: `sources.shuffle` and `sources.shuffle_run`, the Shuffle setting and where its run is up to. |
+ * | 13 | Fork 0.5: `sources.video_quality`, `sources.playback_rate`, `sources.skip_start`, `sources.skip_end`. How the Source plays. |
  *
  * **`sources.title` and `sources.typed_name` are two different facts and are never merged.**
  * `title` is what YouTube calls the Source and the change check keeps it up to date for free.
@@ -59,7 +60,7 @@ private const val DATABASE_NAME = "youtube-tv.db"
  * hundred units of the daily 10,000. A change to the Watch log may not: it has to be a
  * migration.
  */
-private const val DATABASE_VERSION = 12
+private const val DATABASE_VERSION = 13
 
 internal const val TABLE_SOURCES = "sources"
 internal const val TABLE_VIDEOS = "videos"
@@ -242,6 +243,16 @@ class YouTubeTvDatabase(
                 database.execSQL("ALTER TABLE $TABLE_SOURCES ADD COLUMN shuffle_run TEXT")
             }
         }
+        if (oldVersion < 13) {
+            // Fork 0.5. Four adds on `sources`, guarded like every step above. No backfill: an
+            // empty column reads as the app's own picture setting, 1x, and no skip, which is
+            // what every Source did before these existed. Nothing here reaches `watch_log`.
+            for (column in listOf("video_quality TEXT", "playback_rate REAL", "skip_start INTEGER", "skip_end INTEGER")) {
+                if (!hasColumn(database, TABLE_SOURCES, column.substringBefore(' '))) {
+                    database.execSQL("ALTER TABLE $TABLE_SOURCES ADD COLUMN $column")
+                }
+            }
+        }
     }
 
     /**
@@ -287,7 +298,12 @@ private fun createVideoTables(database: SQLiteDatabase) {
             typed_name TEXT,
             -- Shuffle, and where its run is up to. Empty reads as off and no run. Ticket 69.
             shuffle INTEGER,
-            shuffle_run TEXT
+            shuffle_run TEXT,
+            -- How the Source plays. Empty reads as the app's picture setting, 1x, no skip. Fork 0.5.
+            video_quality TEXT,
+            playback_rate REAL,
+            skip_start INTEGER,
+            skip_end INTEGER
         )
         """.trimIndent(),
     )

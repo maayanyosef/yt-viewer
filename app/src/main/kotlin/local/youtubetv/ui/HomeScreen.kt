@@ -61,6 +61,7 @@ import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
 import local.youtubetv.APP_NAME
 import local.youtubetv.data.Landing
+import local.youtubetv.data.PlaybackSettings
 import local.youtubetv.data.SourceCard
 import local.youtubetv.player.VideoQuality
 import local.youtubetv.player.videoQualitySetLine
@@ -128,6 +129,9 @@ fun HomeScreen(
     // menu while it is on, and the menu's line turns it off again.
     childMode: Boolean = false,
     onSetChildMode: (Boolean) -> Unit = {},
+    // How one Source plays, changed on the menu's playback panel. Written through at once;
+    // the panel keeps its own copy while it is open. Fork 0.5.
+    onSetPlayback: (sourceId: String, PlaybackSettings) -> Unit = { _, _ -> },
     // One logcat line per rail action. The rail's order and its landings are rules rather than
     // pictures, so this is what proves them without a screenshot.
     onAction: (String) -> Unit = {},
@@ -176,6 +180,13 @@ fun HomeScreen(
 
     // Whether the phone remote's QR code is up. It is a third state of the same overlay.
     var remoteShown by remember { mutableStateOf(false) }
+
+    // Which settings panel is up, and from which Source's menu it was opened, so `BACK` can go
+    // back to that menu. The playback panel edits a copy, so a line redraws the moment `Left`
+    // or `Right` moves it rather than waiting for the rail to be rebuilt. Fork 0.5.
+    var panelOpen by remember { mutableStateOf<Panel?>(null) }
+    var playbackEdit by remember { mutableStateOf<PlaybackSettings?>(null) }
+    val appSettings = appSettingsLines(videoQuality, childMode)
 
     // Bumped whenever something that covered the rail goes away. Without it the highlight is
     // simply gone when a menu closes, because the card lost focus to the menu and nothing gave
@@ -253,7 +264,17 @@ fun HomeScreen(
         handHighlightBack()
         menuFor = null
         confirm = null
+        panelOpen = null
+        playbackEdit = null
         refocusRequests++
+    }
+
+    /** The menu is replaced by one of its two settings panels, the way [askFirst] replaces it. */
+    fun openPanel(sourceId: String, kind: PanelKind) {
+        handHighlightBack()
+        menuFor = null
+        playbackEdit = null
+        panelOpen = Panel(sourceId, kind)
     }
 
     /**
@@ -288,28 +309,32 @@ fun HomeScreen(
         handHighlightBack()
         menuFor = sourceId
         confirm = null
+        panelOpen = null
+        playbackEdit = null
     }
 
     // The Source an open overlay is about went away under it, which `Remove` is exactly what
     // does. It is cleared from an effect and never while composing: a composition can be run
     // again or thrown away, and writing state from inside one is how a screen ends up in a
     // state no press ever put it in.
-    LaunchedEffect(menuFor, confirm, cards) {
-        val open = confirm?.sourceId ?: menuFor ?: return@LaunchedEffect
+    LaunchedEffect(menuFor, confirm, panelOpen, cards) {
+        val open = confirm?.sourceId ?: panelOpen?.sourceId ?: menuFor ?: return@LaunchedEffect
         if (cards.none { it.sourceId == open }) closeMenu()
     }
 
-    BackHandler(enabled = menuFor != null || confirm != null || remoteShown) {
+    BackHandler(enabled = menuFor != null || confirm != null || remoteShown || panelOpen != null) {
         // `BACK` inside the confirmation returns to the menu, never straight to the rail, the
         // same way `BACK` inside a card submenu returns to its two top lines. Spec section 7.3
-        // settled that shape and this menu follows it.
+        // settled that shape and this menu follows it. A settings panel goes back the same way.
         val open = confirm
+        val panel = panelOpen
         when {
             remoteShown -> {
                 remoteShown = false
                 closeMenu()
             }
             open != null -> backToMenu(open.sourceId)
+            panel != null -> backToMenu(panel.sourceId)
             else -> closeMenu()
         }
     }
@@ -381,6 +406,7 @@ fun HomeScreen(
         // screen. They are looked up by Source id, so a rail that reordered itself underneath
         // cannot leave either one pointing at a different Source.
         val menuCard = menuFor?.let { id -> cards.firstOrNull { it.sourceId == id } }
+        val panelCard = panelOpen?.let { panel -> cards.firstOrNull { it.sourceId == panel.sourceId } }
         val open = confirm
         val confirmCard = open?.let { id -> cards.firstOrNull { it.sourceId == id.sourceId } }
 
@@ -417,20 +443,92 @@ fun HomeScreen(
                 },
                 onNo = refuse,
             )
+            panelCard != null && panelOpen?.kind == PanelKind.APP -> MenuPanel(
+                title = APP_SETTINGS_TITLE,
+                subtitle = MenuSubtitle.Sentence(SETTINGS_HINT),
+                lines = appSettings.map { it.second to true },
+                ink = ink,
+                onChoose = { index ->
+                    when (appSettings[index].first) {
+                        // `OK` keeps the setting `Left` and `Right` chose and closes the menu.
+                        AppSettingsAction.VIDEO_QUALITY -> {
+                            closeMenu()
+                            say(videoQualitySetLine(videoQuality))
+                            onAction("Video quality kept at ${videoQuality.label} with OK.")
+                        }
+                        AppSettingsAction.CHILD_MODE -> {
+                            closeMenu()
+                            val on = !childMode
+                            onSetChildMode(on)
+                            say(if (on) CHILD_MODE_ON_SAID else CHILD_MODE_OFF_SAID)
+                            onAction("Child mode is now ${if (on) "on" else "off"}.")
+                        }
+                        // The panel's line hands the highlight back first, as every close
+                        // does, and the QR panel takes the screen. It has nothing to focus:
+                        // `BACK` is its only key.
+                        AppSettingsAction.PHONE_REMOTE -> {
+                            handHighlightBack()
+                            menuFor = null
+                            panelOpen = null
+                            remoteShown = true
+                            onAction("The phone remote's QR code is shown.")
+                        }
+                        AppSettingsAction.API_KEY -> {
+                            closeMenu()
+                            onApiKey()
+                        }
+                    }
+                },
+                // `Left` and `Right` change a setting where it stands. The panel stays open and
+                // the line redraws with the new setting.
+                onSideways = { index, right ->
+                    when (appSettings[index].first) {
+                        AppSettingsAction.VIDEO_QUALITY -> {
+                            val now = videoQuality.step(right)
+                            if (now != videoQuality) {
+                                onSetVideoQuality(now)
+                                onAction("Video quality set to ${now.label} with ${if (right) "Right" else "Left"}.")
+                            }
+                            true
+                        }
+                        AppSettingsAction.CHILD_MODE -> {
+                            onSetChildMode(!childMode)
+                            onAction("Child mode is now ${if (!childMode) "on" else "off"}.")
+                            true
+                        }
+                        else -> false
+                    }
+                },
+            )
+            panelCard != null && panelOpen?.kind == PanelKind.PLAYBACK -> {
+                val playback = playbackEdit ?: panelCard.playback
+                val lines = playbackSettingsLines(playback)
+                MenuPanel(
+                    title = "$PLAYBACK_SETTINGS_TITLE: ${railCardName(panelCard)}",
+                    subtitle = MenuSubtitle.Sentence(SETTINGS_HINT),
+                    lines = lines.map { it.second to true },
+                    ink = ink,
+                    // `OK` on any line keeps everything and closes the menu.
+                    onChoose = { closeMenu() },
+                    onSideways = { index, right ->
+                        val next = when (lines[index].first) {
+                            PlaybackSettingsAction.PICTURE -> stepPicture(playback, right)
+                            PlaybackSettingsAction.SPEED -> playback.stepRate(right)
+                            PlaybackSettingsAction.SKIP_START -> playback.stepSkipStart(right)
+                            PlaybackSettingsAction.SKIP_END -> playback.stepSkipEnd(right)
+                        }
+                        if (next != playback) {
+                            playbackEdit = next
+                            onSetPlayback(panelCard.sourceId, next)
+                            onAction("Playback of ${panelCard.sourceId} set to $next.")
+                        }
+                        true
+                    },
+                )
+            }
             menuCard != null -> SourceMenuOverlay(
                 card = menuCard,
                 ink = ink,
-                videoQuality = videoQuality,
-                childMode = childMode,
-                // `Left` and `Right` on the `Video quality` line change it where it stands. The
-                // menu stays open and the line redraws with the new setting.
-                onStepVideoQuality = { right ->
-                    val now = videoQuality.step(right)
-                    if (now != videoQuality) {
-                        onSetVideoQuality(now)
-                        onAction("Video quality set to ${now.label} with ${if (right) "Right" else "Left"}.")
-                    }
-                },
                 onChoose = { line ->
                     when (line.action) {
                         SourceMenuAction.OPEN_AT_NEXT_UNWATCHED -> {
@@ -474,35 +572,11 @@ fun HomeScreen(
                             askFirst(menuCard.sourceId, ConfirmKind.REMOVE)
                         SourceMenuAction.MARK_EVERYTHING_UNWATCHED ->
                             askFirst(menuCard.sourceId, ConfirmKind.EVERYTHING_UNWATCHED)
-                        // `OK` keeps the setting `Left` and `Right` chose and closes the menu.
-                        // It used to step to the next setting, and on the Mi TV that wrapped a
-                        // chosen 480p straight back to Auto: `OK` is the key a household
-                        // presses to say "this one".
-                        SourceMenuAction.VIDEO_QUALITY -> {
-                            closeMenu()
-                            say(videoQualitySetLine(videoQuality))
-                            onAction("Video quality kept at ${videoQuality.label} with OK.")
-                        }
-                        SourceMenuAction.API_KEY -> {
-                            closeMenu()
-                            onApiKey()
-                        }
-                        SourceMenuAction.CHILD_MODE -> {
-                            closeMenu()
-                            val on = !childMode
-                            onSetChildMode(on)
-                            say(if (on) CHILD_MODE_ON_SAID else CHILD_MODE_OFF_SAID)
-                            onAction("Child mode is now ${if (on) "on" else "off"}.")
-                        }
-                        SourceMenuAction.PHONE_REMOTE -> {
-                            // The menu's line hands the highlight back first, as every close
-                            // does, and the QR panel takes the screen. It has nothing to focus:
-                            // `BACK` is its only key.
-                            handHighlightBack()
-                            menuFor = null
-                            remoteShown = true
-                            onAction("The phone remote's QR code is shown.")
-                        }
+                        // The two panels. Reached like a confirmation: the menu's line hands
+                        // the highlight back, and the panel's own ladder takes it. `BACK`
+                        // inside either returns to the menu. Fork 0.5.
+                        SourceMenuAction.PLAYBACK_SETTINGS -> openPanel(menuCard.sourceId, PanelKind.PLAYBACK)
+                        SourceMenuAction.APP_SETTINGS -> openPanel(menuCard.sourceId, PanelKind.APP)
                     }
                 },
             )
@@ -524,6 +598,12 @@ fun HomeScreen(
 
 /** Which confirmation is up on the rail, and what pressing yes would do. */
 private enum class ConfirmKind { EVERYTHING_UNWATCHED, REMOVE }
+
+/** Which settings panel is up. Fork 0.5. */
+private enum class PanelKind { APP, PLAYBACK }
+
+/** A settings panel, and the Source whose menu it was opened from. */
+private data class Panel(val sourceId: String, val kind: PanelKind)
 
 /**
  * One confirmation, by Source id and never by index.
@@ -1465,28 +1545,15 @@ private fun ConfirmRemove(
 private fun SourceMenuOverlay(
     card: SourceCard,
     ink: Ink,
-    videoQuality: VideoQuality,
-    childMode: Boolean,
-    onStepVideoQuality: (right: Boolean) -> Unit,
     onChoose: (SourceMenuLine) -> Unit,
 ) {
-    val lines = remember(card, videoQuality, childMode) {
-        sourceMenuLines(card, card.everythingUnwatchedCount, videoQuality, childMode)
-    }
+    val lines = remember(card) { sourceMenuLines(card, card.everythingUnwatchedCount) }
     MenuPanel(
         title = railCardName(card),
         subtitle = MenuSubtitle.Meta(railCardMeta(card)),
         lines = lines.map { it.label to it.enabled },
         ink = ink,
         onChoose = { index -> onChoose(lines[index]) },
-        onSideways = { index, right ->
-            if (lines.getOrNull(index)?.action == SourceMenuAction.VIDEO_QUALITY) {
-                onStepVideoQuality(right)
-                true
-            } else {
-                false
-            }
-        },
     )
 }
 
@@ -1556,290 +1623,4 @@ private fun ConfirmEverythingUnwatched(
     )
 }
 
-/**
- * What a [MenuPanel] says under its title.
- *
- * It is one type with two cases rather than two parameters. Two parameters were the first
- * shape, and `/code-review` pointed out that nothing but a comment stopped a caller passing
- * both and drawing two subtitles. The two cases really are different things and are drawn
- * differently, so the type says which one the caller meant and the `when` below cannot miss
- * one.
- */
-private sealed interface MenuSubtitle {
 
-    /**
-     * A sentence, such as a confirmation's detail. It wraps over up to three lines.
-     *
-     * It is one string and not a list of parts, which is not the defect of spec section 6.2: a
-     * sentence is one bidirectional run by its nature, and a Hebrew Source name inside one is
-     * bounded by whole English words on both sides, so nothing around it is reordered. Checked
-     * on the household television by ticket 20.
-     */
-    data class Sentence(val text: String) : MenuSubtitle
-
-    /** A meta line, drawn as separate pieces of text. See [RailCardMeta] and [MetaLine]. */
-    data class Meta(val meta: RailCardMeta) : MenuSubtitle
-}
-
-/**
- * A column of choices over a scrim, which all three overlays of this screen are.
- *
- * **Nothing inside this panel consults Compose's focus search.** Every line points at its own
- * neighbour through a [FocusRequester], and a line with no neighbour in a direction cancels the
- * search for that direction outright. [menuNeighbour] is the rule, and it is a JVM test.
- *
- * That is build ticket 31's fix, and the reason is geometry. The rail cards behind the scrim
- * stay focusable on purpose; see [RailCard]'s `enabled`. Compose's search looks for the nearest
- * focusable node in the direction asked for, and on the household's rail the bottom edge of a
- * card sat nearer to the menu's last line than the menu line above it did. One `Up` from
- * `Mark everything unwatched` took the highlight out of the menu altogether and scrolled the
- * rail under the scrim. Reproduced on the television on 2026-09-20.
- *
- * [cardMenuKeepsKey] still guards the two ends and the sideways keys. It and the cancelled
- * search now say the same thing at an end, which is deliberate: whichever runs first, the
- * highlight stays where it is.
- */
-@Composable
-private fun MenuPanel(
-    title: String,
-    subtitle: MenuSubtitle?,
-    lines: List<Pair<String, Boolean>>,
-    ink: Ink,
-    onChoose: (Int) -> Unit,
-    // `Left` or `Right` on the drawn line at the index. True when the line used the key, which
-    // a line that is a setting does. Every other line leaves it to the edge guard below.
-    onSideways: (index: Int, right: Boolean) -> Boolean = { _, _ -> false },
-) {
-    // One flag per drawn line, in the order the lines are drawn. This is what [menuNeighbour]
-    // reads, and it is the only thing about the panel the rule needs.
-    val live = remember(lines) { lines.map { it.second } }
-
-    // One requester per drawn line, so a line can name the line it means. Only a live line is
-    // ever given one: a dim line is not focusable, and a requester that reaches no focus target
-    // throws when anything asks it for focus.
-    //
-    // Keyed on the live flags and not on the labels. A line that is a setting changes its own
-    // label when `Left` or `Right` moves it, and a label change must not throw the highlight
-    // back to the first line. A change in which lines are live still starts again from the top.
-    val requesters = remember(title, live) { List(lines.size) { FocusRequester() } }
-    val focusedLine = remember(title, live) { mutableIntStateOf(0) }
-
-    // The first line that can actually take focus. A dim line is skipped, so the retry below
-    // does not ask a line that will never answer.
-    val firstLive = firstLiveLine(live)
-
-    /**
-     * Which drawn line of this panel reports holding the highlight.
-     *
-     * **It is the retry ladder's exit test, and nothing but a line's own focus report writes
-     * it.** Build ticket 47. The ladder used to exit on
-     * `runCatching { requestFocus() }.isSuccess`, which says only that the call did not throw,
-     * so its first rung read success whatever the ask had done.
-     *
-     * **This panel has no key guard of its own**, unlike the Source screen's two, so a ladder
-     * that gave up early left the highlight on a rail card behind the scrim. That card swallows
-     * every key but `BACK` while the rail is covered, so the household saw a menu that answered
-     * nothing and could only leave it. [railIsCovered] carries that rule.
-     *
-     * It is remembered across a change of [lines], because a refresh renumbers the same lines
-     * and Compose reuses their nodes: a node that already holds the highlight reports no focus
-     * change, and a record rebuilt under it would read as holding the highlight nowhere.
-     */
-    val highlightOn = remember { HighlightRecord<Int>() }
-
-    // The panel is useless until something in it has the highlight, and its lines have only
-    // just been placed. The same retry the rail uses, for the same reason.
-    LaunchedEffect(title, live) {
-        val line = firstLive ?: return@LaunchedEffect
-        val target = requesters[line]
-        askUntilHighlightHolds(
-            wait = { millis -> delay(millis) },
-            ask = { runCatching { target.requestFocus() } },
-            holds = { highlightOn.holds(line) },
-        )
-    }
-
-    // How many lines the D-pad can actually stop on. The edge guard counts these and not the
-    // drawn lines, because a dim line is walked past.
-    val liveCount = lines.count { it.second }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ink.menuScrim)
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                if (event.key == Key.DirectionLeft || event.key == Key.DirectionRight) {
-                    val right = event.key == Key.DirectionRight
-                    if (onSideways(focusedLine.intValue, right)) return@onPreviewKeyEvent true
-                }
-                val move = when (event.key) {
-                    Key.DirectionUp -> MenuMove.UP
-                    Key.DirectionDown -> MenuMove.DOWN
-                    Key.DirectionLeft, Key.DirectionRight,
-                    Key.ChannelUp, Key.ChannelDown, Key.PageUp, Key.PageDown,
-                    -> MenuMove.SIDEWAYS
-                    else -> return@onPreviewKeyEvent false
-                }
-                // The **live** lines, not every line. A dim line is not focusable, so the
-                // last line the D-pad can reach is the last live one, and counting the dim
-                // ones would leave `Down` unguarded on a menu whose last line is dim. That is
-                // exactly the menu of a Source that has never been walked, which is what a
-                // fresh install opens on. Found by `/code-review`.
-                cardMenuKeepsKey(move, liveLine(lines, focusedLine.intValue), liveCount)
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            modifier = Modifier
-                .widthIn(min = 460.dp, max = 680.dp)
-                .background(ink.surfaceRaised, RoundedCornerShape(14.dp))
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = title,
-                color = ink.onSurface,
-                style = Fonts.FocusedTitle,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            when (subtitle) {
-                null -> Unit
-                is MenuSubtitle.Sentence -> Text(
-                    text = subtitle.text,
-                    color = ink.onSurfaceMuted,
-                    style = Fonts.Meta,
-                    maxLines = 3,
-                )
-                is MenuSubtitle.Meta -> MetaLine(
-                    parts = subtitle.meta.parts,
-                    shrinkingPart = subtitle.meta.shrinkingPart,
-                    color = ink.onSurfaceMuted,
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-
-            lines.forEachIndexed { index, (label, enabled) ->
-                PanelLine(
-                    label = label,
-                    enabled = enabled,
-                    ink = ink,
-                    focusRequester = requesters[index].takeIf { enabled },
-                    // The neighbour, named rather than searched for. `FocusRequester.Cancel`
-                    // stops the search dead at an end of the column, which is what keeps the
-                    // rail behind the scrim from taking the highlight and scrolling.
-                    up = neighbourRequester(live, index, MenuMove.UP, requesters),
-                    down = neighbourRequester(live, index, MenuMove.DOWN, requesters),
-                    // **Two answers, kept apart.** [highlightOn] is what this line reports and
-                    // is the ladder's exit test; [focusedLine] is what the panel's edge guard
-                    // counts from. A loss is recorded as well as a gain, because a record that
-                    // only ever goes true cannot say the highlight has left the panel. Build
-                    // ticket 47.
-                    onHighlightChanged = { holdsIt ->
-                        highlightOn.report(index, holdsIt)
-                        if (holdsIt) focusedLine.intValue = index
-                    },
-                    onChoose = { onChoose(index) },
-                )
-            }
-        }
-    }
-}
-
-/**
- * Which live line the highlight is on, counting only the lines the D-pad can stop on.
- *
- * [cardMenuKeepsKey] asks "am I at the top or the bottom of the column", and its answer is only
- * right when both its numbers count the same lines. The drawn index and the live index are the
- * same number until a line above the highlight is dim, and they differ the moment one is.
- */
-private fun liveLine(lines: List<Pair<String, Boolean>>, drawnIndex: Int): Int =
-    lines.take(drawnIndex.coerceAtLeast(0)).count { it.second }
-
-/**
- * One line of a panel.
- *
- * A dim line is **not focusable**, so the D-pad walks straight past it, which is the same rule
- * a disabled chip on the Source screen follows. It is still drawn, in the faintest ink on the
- * screen, because a line that came and went would be a line whose place could never be learnt.
- *
- * @param up the line `Up` moves to, or [FocusRequester.Cancel] when there is none above. The
- *   panel works this out with [menuNeighbour]; the line is only told the answer.
- * @param down the same, downwards.
- */
-@Composable
-private fun PanelLine(
-    label: String,
-    enabled: Boolean,
-    ink: Ink,
-    focusRequester: FocusRequester?,
-    up: FocusRequester,
-    down: FocusRequester,
-    onHighlightChanged: (Boolean) -> Unit,
-    onChoose: () -> Unit,
-    modifier: Modifier = Modifier.fillMaxWidth(),
-) {
-    var focused by remember { mutableStateOf(false) }
-    Row(
-        modifier = modifier
-            .height(46.dp)
-            .background(
-                color = if (focused) ink.focusFill else Color.Transparent,
-                shape = RoundedCornerShape(10.dp),
-            )
-            .border(
-                width = 2.dp,
-                color = if (focused) ink.accent else Color.Transparent,
-                shape = RoundedCornerShape(10.dp),
-            )
-            .let { if (focusRequester == null) it else it.focusRequester(focusRequester) }
-            .then(
-                if (enabled) {
-                    Modifier
-                        // Named neighbours, so no key inside this panel ever reaches Compose's
-                        // two-dimensional focus search. `Left` and `Right` are not named here:
-                        // the panel's own guard keeps them, and naming `Cancel` for them as
-                        // well would say the same thing in a second place.
-                        .panelNeighbours(above = up, below = down)
-                        // A tap chooses the line. A hold does nothing here, and must not fall
-                        // through to the release that opened this menu in the first place.
-                        .onSelectOrHoldKey(onSelect = onChoose, onHold = {})
-                } else {
-                    Modifier
-                },
-            )
-            // **Outside the `enabled` branch, and `MenuLine` on the Source screen has the same
-            // shape for the same reason.** A line that goes dim while it holds the highlight
-            // has to be able to say that it lost it. With this modifier inside the branch,
-            // going dim takes the modifier away before Compose reports anything, so the
-            // panel's record would go on naming a line that holds nothing and this line would
-            // go on being drawn with the focus fill and the ring. No line of a home panel
-            // flips from live to dim today, so this is a trap removed and not a defect fixed.
-            // Found by `/code-review` on build ticket 47.
-            .onFocusChanged { focusState ->
-                // Only a real change is reported on. Compose delivers `onFocusChanged` on
-                // other things than a gain or a loss, and a record written from a delivery
-                // that changed nothing would report a loss this line never had.
-                val changed = focusState.isFocused != focused
-                focused = focusState.isFocused
-                if (changed) onHighlightChanged(focusState.isFocused)
-            }
-            // A dim line is not focusable, so the D-pad walks straight past it and it can
-            // never be chosen.
-            .focusable(enabled = enabled)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            color = when {
-                !enabled -> ink.onSurfaceFaint
-                focused -> ink.onFocus
-                else -> ink.onSurface
-            },
-            style = Fonts.Chip,
-            maxLines = 1,
-        )
-    }
-}

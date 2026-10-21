@@ -112,8 +112,17 @@ class PlayerHtmlTest {
     fun `a load can ask for the video to stop on its first frame`() {
         // That is what the five second countdown of spec section 8.6 plays behind, and it is
         // how the related-video wall is replaced before the household sees it.
-        assertTrue(page.contains("function ytLoad(videoId, startSeconds, durationSeconds, gen, pauseOnStart)"))
+        assertTrue(page.contains("function ytLoad(videoId, startSeconds, durationSeconds, gen, pauseOnStart, rate)"))
         assertTrue(page.contains("pendingPause"))
+    }
+
+    @Test
+    fun `a load carries the Source's speed and asks for it again on the first PLAYING`() {
+        // Fork 0.5. The player builds a new video module per load, and a rate asked for too
+        // early does not stick, so it is asked for twice.
+        assertTrue(page.contains("currentRate = rate || 1;"))
+        assertTrue(page.contains("player.setPlaybackRate(currentRate)"))
+        assertTrue(page.contains("if (e.data === 1 && currentRate !== 1)"))
     }
 
     @Test

@@ -2,6 +2,7 @@ package local.youtubetv.ui
 
 import java.time.ZoneId
 import local.youtubetv.data.Direction
+import local.youtubetv.data.PlaybackSettings
 import local.youtubetv.data.SourceCard
 import local.youtubetv.player.VideoQuality
 import local.youtubetv.player.videoQualityLine
@@ -232,20 +233,83 @@ enum class SourceMenuAction {
     REMOVE,
     MARK_EVERYTHING_UNWATCHED,
 
+    /** Opens the panel of how this Source plays: picture, speed, skips. Fork 0.5. */
+    PLAYBACK_SETTINGS,
+
     /**
-     * Moves the player's quality cap on to the next setting. About the app, not this Source,
-     * exactly like [API_KEY]. See `player/VideoQuality.kt`.
+     * Opens the panel of everything about the app and not about this Source: the video
+     * quality, child mode, the phone remote and the API key. Fork 0.5. Those were four lines
+     * of this menu, and the menu had grown to eleven, which is more than a screen holds.
      */
+    APP_SETTINGS,
+}
+
+/** One line of the app settings panel. Fork 0.5. */
+enum class AppSettingsAction {
+    /** The player's quality cap. `Left` and `Right` change it. See `player/VideoQuality.kt`. */
     VIDEO_QUALITY,
 
-    /** Opens the key screen. Build ticket 64. It is about the app, not about this Source. */
-    API_KEY,
+    /** Child mode. `Left`, `Right` and `OK` all turn it around. See `ui/ChildMode.kt`. */
+    CHILD_MODE,
 
-    /** Shows the phone remote's QR code. About the app, like [API_KEY]. */
+    /** Shows the phone remote's QR code. */
     PHONE_REMOTE,
 
-    /** Turns child mode on or off. About the app. See `ui/ChildMode.kt`. */
-    CHILD_MODE,
+    /** Opens the key screen. Build ticket 64. */
+    API_KEY,
+}
+
+/** One line of a Source's playback panel. Fork 0.5. Every line is changed with `Left` and `Right`. */
+enum class PlaybackSettingsAction { PICTURE, SPEED, SKIP_START, SKIP_END }
+
+const val PLAYBACK_SETTINGS_LINE = "Playback for this Source…"
+const val APP_SETTINGS_LINE = "App settings…"
+const val APP_SETTINGS_TITLE = "App settings"
+const val PLAYBACK_SETTINGS_TITLE = "Playback"
+const val SETTINGS_HINT = "Left and Right change a setting. OK or BACK keeps it."
+
+/** The app settings panel's lines, each saying the setting it is on. */
+fun appSettingsLines(videoQuality: VideoQuality, childMode: Boolean): List<Pair<AppSettingsAction, String>> =
+    listOf(
+        AppSettingsAction.VIDEO_QUALITY to videoQualityLine(videoQuality),
+        AppSettingsAction.CHILD_MODE to childModeLine(childMode),
+        AppSettingsAction.PHONE_REMOTE to PHONE_REMOTE_LINE,
+        AppSettingsAction.API_KEY to API_KEY_LINE,
+    )
+
+/** The picture choices of a Source: the app's own setting first, then every cap. */
+val PICTURE_CHOICES: List<VideoQuality?> = listOf(null) + VideoQuality.entries
+
+/** `Left` or `Right` on the picture line. It stops at both ends. */
+fun stepPicture(playback: PlaybackSettings, right: Boolean): PlaybackSettings {
+    val current = playback.qualityName?.let { name -> VideoQuality.entries.firstOrNull { it.name == name } }
+    val at = PICTURE_CHOICES.indexOf(current).coerceAtLeast(0)
+    val to = (if (right) at + 1 else at - 1).coerceIn(0, PICTURE_CHOICES.size - 1)
+    return playback.copy(qualityName = PICTURE_CHOICES[to]?.name)
+}
+
+private fun arrowed(label: String, at: Int, count: Int): String {
+    val left = if (at > 0) "‹ " else ""
+    val right = if (at < count - 1) " ›" else ""
+    return "$left$label$right"
+}
+
+/** A Source's playback panel's lines, each saying the setting it is on with arrows where it can move. */
+fun playbackSettingsLines(playback: PlaybackSettings): List<Pair<PlaybackSettingsAction, String>> {
+    val picture = playback.qualityName?.let { name -> VideoQuality.entries.firstOrNull { it.name == name } }
+    val pictureAt = PICTURE_CHOICES.indexOf(picture).coerceAtLeast(0)
+    val rateAt = PlaybackSettings.RATES.indexOf(playback.rate).coerceAtLeast(0)
+    val skipSteps = PlaybackSettings.SKIP_MAX_SECONDS / PlaybackSettings.SKIP_STEP_SECONDS + 1
+    return listOf(
+        PlaybackSettingsAction.PICTURE to
+            "Picture: ${arrowed(picture?.label ?: "App setting", pictureAt, PICTURE_CHOICES.size)}",
+        PlaybackSettingsAction.SPEED to
+            "Speed: ${arrowed(PlaybackSettings.rateLabel(playback.rate), rateAt, PlaybackSettings.RATES.size)}",
+        PlaybackSettingsAction.SKIP_START to
+            "Skip the start: ${arrowed(PlaybackSettings.skipLabel(playback.skipStartSeconds), playback.skipStartSeconds / PlaybackSettings.SKIP_STEP_SECONDS, skipSteps)}",
+        PlaybackSettingsAction.SKIP_END to
+            "Skip the end: ${arrowed(PlaybackSettings.skipLabel(playback.skipEndSeconds), playback.skipEndSeconds / PlaybackSettings.SKIP_STEP_SECONDS, skipSteps)}",
+    )
 }
 
 /**
@@ -360,12 +424,7 @@ const val MARK_EVERYTHING_UNWATCHED = "Mark everything unwatched"
  * @param everythingUnwatchedCount how many videos `Mark everything unwatched` would reach, or
  *   null when it can reach none and the line is dim.
  */
-fun sourceMenuLines(
-    card: SourceCard,
-    everythingUnwatchedCount: Int?,
-    videoQuality: VideoQuality = VideoQuality.AUTO,
-    childMode: Boolean = false,
-): List<SourceMenuLine> =
+fun sourceMenuLines(card: SourceCard, everythingUnwatchedCount: Int?): List<SourceMenuLine> =
     listOf(
         SourceMenuLine(
             SourceMenuAction.OPEN_AT_NEXT_UNWATCHED,
@@ -405,16 +464,10 @@ fun sourceMenuLines(
         ),
         // Build ticket 64. Second to last, so `Mark everything unwatched` keeps the last place
         // ticket 10 gave it. A slip past `Remove` lands here, which only opens a screen.
-        // Next to `API key`, the other line about the whole app. It says the setting it is on,
-        // so the household knows where a press will move it from.
-        SourceMenuLine(
-            SourceMenuAction.VIDEO_QUALITY,
-            videoQualityLine(videoQuality),
-            enabled = true,
-        ),
-        SourceMenuLine(SourceMenuAction.API_KEY, API_KEY_LINE, enabled = true),
-        SourceMenuLine(SourceMenuAction.PHONE_REMOTE, PHONE_REMOTE_LINE, enabled = true),
-        SourceMenuLine(SourceMenuAction.CHILD_MODE, childModeLine(childMode), enabled = true),
+        // Two panels, second to last, so `Mark everything unwatched` keeps the last place
+        // ticket 10 gave it. A slip past `Remove` lands on a line that only opens a panel.
+        SourceMenuLine(SourceMenuAction.PLAYBACK_SETTINGS, PLAYBACK_SETTINGS_LINE, enabled = true),
+        SourceMenuLine(SourceMenuAction.APP_SETTINGS, APP_SETTINGS_LINE, enabled = true),
         SourceMenuLine(
             SourceMenuAction.MARK_EVERYTHING_UNWATCHED,
             if (everythingUnwatchedCount == null) {

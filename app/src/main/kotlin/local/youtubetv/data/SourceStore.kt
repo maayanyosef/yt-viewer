@@ -225,6 +225,14 @@ interface SourceStore {
     fun setShuffleRun(sourceId: String, run: ShuffleRun)
 
     /**
+     * Writes how this Source plays: its picture cap, speed and skips. Fork 0.5.
+     *
+     * Four columns and nothing else, and a Source with no row is left alone, for the reasons
+     * [setAutoplayNext] gives.
+     */
+    fun setPlaybackSettings(sourceId: String, playback: PlaybackSettings)
+
+    /**
      * The change check of spec section 5.2 just read this Source's remote count.
      *
      * One column, for the same reason every writer above it writes one. A Source with no row
@@ -402,6 +410,8 @@ data class StoredSource(
      * ticket 69. See [ShuffleRun], which says why a seed and a played list are all of it.
      */
     val shuffleRun: ShuffleRun? = null,
+    /** How this Source plays. Fork 0.5. See [PlaybackSettings]. */
+    val playback: PlaybackSettings = PlaybackSettings.DEFAULT,
 ) {
     companion object {
         /**
@@ -595,6 +605,11 @@ class InMemorySourceStore : SourceStore {
     override fun setShuffleRun(sourceId: String, run: ShuffleRun) {
         val existing = sources[sourceId] ?: return
         sources[sourceId] = existing.copy(shuffleRun = shuffleRunOfStored(run.stored()))
+    }
+
+    override fun setPlaybackSettings(sourceId: String, playback: PlaybackSettings) {
+        val existing = sources[sourceId] ?: return
+        sources[sourceId] = existing.copy(playback = playback)
     }
 
     override fun fillMissingTitle(sourceId: String, title: String): Boolean {

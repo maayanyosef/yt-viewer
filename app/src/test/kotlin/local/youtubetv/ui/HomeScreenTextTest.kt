@@ -5,6 +5,7 @@ import local.youtubetv.data.Direction
 import local.youtubetv.data.SourceCard
 import local.youtubetv.data.StoredVideo
 import local.youtubetv.data.testVideo
+import local.youtubetv.data.PlaybackSettings
 import local.youtubetv.player.VideoQuality
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -338,10 +339,8 @@ class SourceMenuLinesTest {
                 SourceMenuAction.REFRESH,
                 SourceMenuAction.RENAME,
                 SourceMenuAction.REMOVE,
-                SourceMenuAction.VIDEO_QUALITY,
-                SourceMenuAction.API_KEY,
-                SourceMenuAction.PHONE_REMOTE,
-                SourceMenuAction.CHILD_MODE,
+                SourceMenuAction.PLAYBACK_SETTINGS,
+                SourceMenuAction.APP_SETTINGS,
                 SourceMenuAction.MARK_EVERYTHING_UNWATCHED,
             ),
             lines.map { it.action },
@@ -412,13 +411,10 @@ class SourceMenuLinesTest {
         // `Remove` is live on a Source that has never been walked. Spec section 6.6 says so,
         // and a Source added by mistake is exactly the one a household wants off its rail.
         assertTrue(lines[5].enabled)
-        // `Video quality` and `API key: replace or remove` are about the app, so they are live
-        // on every Source. Build ticket 64 for the key.
+        // The two panels only open a panel, so they are live on every Source. Fork 0.5.
         assertTrue(lines[6].enabled)
         assertTrue(lines[7].enabled)
-        assertTrue(lines[8].enabled)
-        assertTrue(lines[9].enabled)
-        assertFalse(lines[10].enabled)
+        assertFalse(lines[8].enabled)
     }
 
     /**
@@ -444,7 +440,9 @@ class SourceMenuLinesTest {
     }
 
     /**
-     * The menu is eleven lines now, and nothing may quietly grow it again. Build ticket 64 added
+     * The menu is nine lines now, and nothing may quietly grow it again. Fork 0.5 folded
+     * the four app-level lines into one `App settings…` panel when the menu reached eleven,
+     * which is more than a screen holds, and added `Playback for this Source…` beside it. Build ticket 64 added
      * the eighth, `API key: replace or remove`, on purpose and above the last line. The
      * `Video quality` line is the ninth, above `API key`, the other line about the whole app.
      *
@@ -453,10 +451,10 @@ class SourceMenuLinesTest {
      * that is the one line whose place ticket 10 fixed and every ticket since has kept.
      */
     @Test
-    fun `the menu holds eleven lines and the destructive one is still last`() {
+    fun `the menu holds nine lines and the destructive one is still last`() {
         val lines = sourceMenuLines(card(lastPlayedVideoId = "v9"), everythingUnwatchedCount = 10)
 
-        assertEquals(11, lines.size)
+        assertEquals(9, lines.size)
         assertEquals(SourceMenuAction.MARK_EVERYTHING_UNWATCHED, lines.last().action)
     }
 
@@ -469,15 +467,15 @@ class SourceMenuLinesTest {
      * list of flags, so the walk and the menu cannot drift apart.
      */
     @Test
-    fun `the D-pad walks all eleven lines of a walked Source, and stops at both ends`() {
+    fun `the D-pad walks all nine lines of a walked Source, and stops at both ends`() {
         val live = sourceMenuLines(card(lastPlayedVideoId = "v9"), everythingUnwatchedCount = 10)
             .map { it.enabled }
 
         val down = generateSequence(0) { menuNeighbour(live, it, MenuMove.DOWN) }.toList()
-        val up = generateSequence(10) { menuNeighbour(live, it, MenuMove.UP) }.toList()
+        val up = generateSequence(8) { menuNeighbour(live, it, MenuMove.UP) }.toList()
 
-        assertEquals(listOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10), down)
-        assertEquals(listOf(10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0), up)
+        assertEquals(listOf(0, 1, 2, 3, 4, 5, 6, 7, 8), down)
+        assertEquals(listOf(8, 7, 6, 5, 4, 3, 2, 1, 0), up)
     }
 
     /**
@@ -492,24 +490,56 @@ class SourceMenuLinesTest {
         val fresh = card(walked = false, listedCount = 0, unwatchedCount = 0, nextUnwatched = null)
         val live = sourceMenuLines(fresh, everythingUnwatchedCount = null).map { it.enabled }
 
-        assertEquals(listOf(true, false, true, false, true, true, true, true, true, true, false), live)
+        assertEquals(listOf(true, false, true, false, true, true, true, true, false), live)
 
         val down = generateSequence(0) { menuNeighbour(live, it, MenuMove.DOWN) }.toList()
-        val up = generateSequence(9) { menuNeighbour(live, it, MenuMove.UP) }.toList()
+        val up = generateSequence(7) { menuNeighbour(live, it, MenuMove.UP) }.toList()
 
-        assertEquals(listOf(0, 2, 4, 5, 6, 7, 8, 9), down)
-        assertEquals(listOf(9, 8, 7, 6, 5, 4, 2, 0), up)
+        assertEquals(listOf(0, 2, 4, 5, 6, 7), down)
+        assertEquals(listOf(7, 6, 5, 4, 2, 0), up)
     }
 
-    /** The `Video quality` line says the setting it is on, so a press is never a guess. */
+    /** The app settings panel's lines say the setting each is on, so a press is never a guess. */
     @Test
-    fun `the Video quality line names the current setting`() {
-        val auto = sourceMenuLines(card(), everythingUnwatchedCount = 10)
-        val capped = sourceMenuLines(card(), 10, videoQuality = VideoQuality.P720)
+    fun `the app settings panel names every setting`() {
+        val lines = appSettingsLines(VideoQuality.P720, childMode = true)
 
-        assertEquals("Video quality: Auto ›", auto[6].label)
-        assertEquals("Video quality: ‹ 720p ›", capped[6].label)
-        assertTrue(capped[6].enabled)
+        assertEquals(
+            listOf(
+                AppSettingsAction.VIDEO_QUALITY to "Video quality: ‹ 720p ›",
+                AppSettingsAction.CHILD_MODE to "Child mode: On",
+                AppSettingsAction.PHONE_REMOTE to PHONE_REMOTE_LINE,
+                AppSettingsAction.API_KEY to API_KEY_LINE,
+            ),
+            lines,
+        )
+    }
+
+    /** The playback panel's lines carry arrows only where `Left` or `Right` can still move. */
+    @Test
+    fun `the playback panel names every setting with its arrows`() {
+        val lines = playbackSettingsLines(PlaybackSettings())
+
+        assertEquals("Picture: App setting ›", lines[0].second)
+        assertEquals("Speed: ‹ 1× ›", lines[1].second)
+        assertEquals("Skip the start: Off ›", lines[2].second)
+        assertEquals("Skip the end: Off ›", lines[3].second)
+
+        val set = PlaybackSettings(qualityName = "P480", rate = 2f, skipStartSeconds = 180, skipEndSeconds = 15)
+        val lines2 = playbackSettingsLines(set)
+        assertEquals("Picture: ‹ 480p", lines2[0].second)
+        assertEquals("Speed: ‹ 2×", lines2[1].second)
+        assertEquals("Skip the start: ‹ 180 s", lines2[2].second)
+        assertEquals("Skip the end: ‹ 15 s ›", lines2[3].second)
+    }
+
+    @Test
+    fun `the picture line walks from the app setting through every cap and stops`() {
+        var p = PlaybackSettings()
+        val seen = mutableListOf<String?>()
+        repeat(6) { p = stepPicture(p, right = true); seen += p.qualityName }
+        assertEquals(listOf("AUTO", "P1080", "P720", "P480", "P480", "P480"), seen)
+        assertEquals(null, stepPicture(PlaybackSettings(qualityName = "AUTO"), right = false).qualityName)
     }
 
     /** Only one line of this menu is ever dim on a Source the household has actually walked. */

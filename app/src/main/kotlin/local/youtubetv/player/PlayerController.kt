@@ -176,12 +176,13 @@ class PlayerController(
         startSeconds: Int,
         durationSeconds: Int?,
         pauseOnStart: Boolean = false,
+        rate: Float = 1f,
     ) {
         // Bumped here and not in `sendLoad`, so that a load asked for before the page is
         // ready already owns its number and every event of the load before it is stale from
         // this moment on.
         generation += 1
-        val load = Load(videoId, startSeconds, durationSeconds, pauseOnStart, generation)
+        val load = Load(videoId, startSeconds, durationSeconds, pauseOnStart, generation, rate)
         if (!ready) {
             pending = load
             return
@@ -200,7 +201,7 @@ class PlayerController(
         js(
             "ytLoad(${org.json.JSONObject.quote(load.videoId)}, " +
                 "${load.startSeconds}, ${load.durationSeconds ?: 0}, " +
-                "${load.generation}, ${load.pauseOnStart});",
+                "${load.generation}, ${load.pauseOnStart}, ${load.rate});",
         )
     }
 
@@ -211,6 +212,8 @@ class PlayerController(
         val durationSeconds: Int?,
         val pauseOnStart: Boolean,
         val generation: Int,
+        /** The Source's speed. Fork 0.5. */
+        val rate: Float,
     )
 
     /**

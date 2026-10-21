@@ -75,6 +75,11 @@ class SqliteSourceStore(private val helper: SQLiteOpenHelper) : SourceStore {
             // Build ticket 69. Spelled out for the same reason `typed_name` is.
             put("shuffle", if (source.shuffle) 1 else 0)
             put("shuffle_run", source.shuffleRun?.stored())
+            // Fork 0.5. Spelled out for the same reason `typed_name` is.
+            put("video_quality", source.playback.qualityName)
+            put("playback_rate", source.playback.rate.toDouble())
+            put("skip_start", source.playback.skipStartSeconds)
+            put("skip_end", source.playback.skipEndSeconds)
         }
         helper.writableDatabase.insertWithOnConflict(
             TABLE_SOURCES,
@@ -347,6 +352,16 @@ class SqliteSourceStore(private val helper: SQLiteOpenHelper) : SourceStore {
         helper.writableDatabase.update(TABLE_SOURCES, values, "source_id = ?", arrayOf(sourceId))
     }
 
+    override fun setPlaybackSettings(sourceId: String, playback: PlaybackSettings) {
+        val values = ContentValues().apply {
+            put("video_quality", playback.qualityName)
+            put("playback_rate", playback.rate.toDouble())
+            put("skip_start", playback.skipStartSeconds)
+            put("skip_end", playback.skipEndSeconds)
+        }
+        helper.writableDatabase.update(TABLE_SOURCES, values, "source_id = ?", arrayOf(sourceId))
+    }
+
     /**
      * Replaces this Source's videos inside one transaction.
      *
@@ -615,6 +630,10 @@ private val SOURCE_COLUMNS = arrayOf(
     "typed_name",
     "shuffle",
     "shuffle_run",
+    "video_quality",
+    "playback_rate",
+    "skip_start",
+    "skip_end",
 )
 
 private fun Cursor.toStoredSource(): StoredSource = StoredSource(
@@ -645,6 +664,14 @@ private fun Cursor.toStoredSource(): StoredSource = StoredSource(
     shuffle = booleanOrFalse(8),
     // Null until the Source first has a run. A run this build cannot read is no run.
     shuffleRun = shuffleRunOfStored(if (isNull(9)) null else getString(9)),
+    // Null for a row written before database version 13, and that reads as the app's own
+    // picture setting, 1x and no skip. Fork 0.5.
+    playback = PlaybackSettings(
+        qualityName = if (isNull(10)) null else getString(10),
+        rate = PlaybackSettings.rateOfStored(if (isNull(11)) null else getDouble(11)),
+        skipStartSeconds = PlaybackSettings.skipOfStored(intOrNull(12)),
+        skipEndSeconds = PlaybackSettings.skipOfStored(intOrNull(13)),
+    ),
 )
 
 private fun Cursor.instantOrNull(column: Int): Instant? =
