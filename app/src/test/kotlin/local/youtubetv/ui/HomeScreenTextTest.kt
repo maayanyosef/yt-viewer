@@ -502,12 +502,14 @@ class SourceMenuLinesTest {
     /** The app settings panel's lines say the setting each is on, so a press is never a guess. */
     @Test
     fun `the app settings panel names every setting`() {
-        val lines = appSettingsLines(VideoQuality.P720, childMode = true)
+        val lines = appSettingsLines(VideoQuality.P720, childMode = true, hideWatched = true, largeText = false)
 
         assertEquals(
             listOf(
                 AppSettingsAction.VIDEO_QUALITY to "Video quality: ‹ 720p ›",
                 AppSettingsAction.CHILD_MODE to "Child mode: On",
+                AppSettingsAction.HIDE_WATCHED to "Hide watched: On",
+                AppSettingsAction.TEXT_SIZE to "Text size: Normal",
                 AppSettingsAction.PHONE_REMOTE to PHONE_REMOTE_LINE,
                 AppSettingsAction.API_KEY to API_KEY_LINE,
             ),

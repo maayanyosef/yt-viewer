@@ -12,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -19,6 +20,8 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.res.colorResource
 import androidx.lifecycle.lifecycleScope
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -27,6 +30,7 @@ import androidx.tv.material3.darkColorScheme
 import java.time.Instant
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -116,6 +120,8 @@ import local.youtubetv.ui.HomeScreen
 import local.youtubetv.ui.HomeScreenState
 import local.youtubetv.ui.ChildModeStore
 import local.youtubetv.ui.HttpThumbnailLoader
+import local.youtubetv.ui.LARGE_TEXT_SCALE
+import local.youtubetv.ui.ViewSettingsStore
 import local.youtubetv.ui.thumbnailCacheBytes
 import local.youtubetv.ui.RenameSourceModel
 import local.youtubetv.ui.RenamedSource
@@ -386,6 +392,11 @@ class MainActivity : ComponentActivity() {
     /** Child mode. See `ui/ChildMode.kt`. */
     private lateinit var childModeStore: ChildModeStore
     private var childMode by mutableStateOf(false)
+
+    /** `Hide watched` and `Text size`. See `ui/ViewSettings.kt`. Fork 0.6. */
+    private lateinit var viewSettings: ViewSettingsStore
+    private var hideWatched by mutableStateOf(false)
+    private var largeText by mutableStateOf(false)
 
     /** The up-next row over the player, or null when it is not up. `Down` opens it. */
     private var upNext by mutableStateOf<UpNextUi?>(null)
@@ -750,7 +761,9 @@ class MainActivity : ComponentActivity() {
             memoryClassMb = activityManager.memoryClass,
             lowRamDevice = activityManager.isLowRamDevice,
         )
-        thumbnails = HttpThumbnailLoader(cacheBytes)
+        // Pictures are kept on disk between launches as well, so an offline television still
+        // draws the cards it has drawn before. Fork 0.6.
+        thumbnails = HttpThumbnailLoader(cacheBytes, File(cacheDir, "thumbnails"))
         Log.i(
             LOG_TAG,
             "Thumbnail cache ${cacheBytes / (1024 * 1024)} MB: heap ${activityManager.memoryClass} MB, " +
@@ -762,9 +775,12 @@ class MainActivity : ComponentActivity() {
         remoteSettings = RemoteSettings(this)
         childModeStore = ChildModeStore(this)
         childMode = childModeStore.read()
+        viewSettings = ViewSettingsStore(this)
+        hideWatched = viewSettings.hideWatched()
+        largeText = viewSettings.largeText()
 
         setContent {
-            YouTubeTvTheme {
+            YouTubeTvTheme(largeText = largeText) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     val opened = open
                     val addModel = adding
@@ -890,6 +906,18 @@ class MainActivity : ComponentActivity() {
                             childMode = childMode,
                             onSetChildMode = ::switchChildMode,
                             onSetPlayback = ::setSourcePlayback,
+                            hideWatched = hideWatched,
+                            onSetHideWatched = { on ->
+                                hideWatched = on
+                                viewSettings.setHideWatched(on)
+                                Log.i(LOG_TAG, "Hide watched is now ${if (on) "on" else "off"}.")
+                            },
+                            largeText = largeText,
+                            onSetLargeText = { on ->
+                                largeText = on
+                                viewSettings.setLargeText(on)
+                                Log.i(LOG_TAG, "Text size is now ${if (on) "large" else "normal"}.")
+                            },
                             // One `range` entry. On the Activity's scope and off the main
                             // thread, exactly like every other write to the household's log.
                             onMarkEverythingUnwatched = { card ->
@@ -965,6 +993,7 @@ class MainActivity : ComponentActivity() {
                             // screenshot.
                             onLanding = { line -> Log.i(LOG_TAG, line) },
                             childMode = childMode,
+                            hideWatched = hideWatched,
                             returnedFromPlayer = returnedFromPlayer,
                             landOnVideoId = landOnVideoId,
                             // The player is drawn over this screen rather than navigated to,
@@ -2082,6 +2111,7 @@ class MainActivity : ComponentActivity() {
                     durationSeconds = video.durationSeconds,
                     watched = state?.watched == true,
                     positionSeconds = state?.positionSeconds,
+                    viewCount = video.viewCount,
                 )
             }
     }
@@ -2418,8 +2448,13 @@ private const val REMOTE_PLAY_WAIT_MILLIS = 20_000L
 /** The seam every later screen hangs on. Colours come from res/values/colors.xml. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun YouTubeTvTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
+fun YouTubeTvTheme(largeText: Boolean = false, content: @Composable () -> Unit) {
+    // `Text size: Large` is the font scale of the whole screen, so every size in `Fonts`
+    // grows together. Fork 0.6. See [LARGE_TEXT_SCALE].
+    val density = LocalDensity.current
+    val scaled = if (largeText) Density(density.density, density.fontScale * LARGE_TEXT_SCALE) else density
+    CompositionLocalProvider(LocalDensity provides scaled) {
+        MaterialTheme(
         colorScheme = darkColorScheme(
             background = colorResource(R.color.surface),
             surface = colorResource(R.color.surface),
@@ -2427,6 +2462,7 @@ fun YouTubeTvTheme(content: @Composable () -> Unit) {
             onSurface = colorResource(R.color.on_surface),
             primary = colorResource(R.color.accent),
         ),
-        content = content,
-    )
+            content = content,
+        )
+    }
 }

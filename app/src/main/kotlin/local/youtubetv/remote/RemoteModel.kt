@@ -31,6 +31,7 @@ data class RemoteVideo(
     val durationSeconds: Int?,
     val watched: Boolean,
     val positionSeconds: Int?,
+    val viewCount: Long? = null,
 )
 
 /** What is playing right now, or null when nothing is. */
@@ -128,7 +129,14 @@ sealed interface RemoteRequest {
     data object State : RemoteRequest
 
     /** The video list of one Source, a page at a time. */
-    data class Videos(val sourceId: String, val offset: Int, val limit: Int, val query: String) : RemoteRequest
+    data class Videos(
+        val sourceId: String,
+        val offset: Int,
+        val limit: Int,
+        val query: String,
+        /** `date` (the Source's own order), `views` or `duration`. Fork 0.6. */
+        val sort: String = "date",
+    ) : RemoteRequest
 
     data class Command(val command: RemoteCommand) : RemoteRequest
 
@@ -140,6 +148,9 @@ sealed interface RemoteRequest {
 
 /** How many videos one page of the list carries at most. */
 const val REMOTE_VIDEOS_PAGE = 60
+
+/** The orders the phone's list can be put in. `date` is the Source's own Direction. */
+val REMOTE_SORTS = setOf("date", "views", "duration")
 
 /**
  * Decides what one request is.
@@ -166,6 +177,7 @@ fun routeRemoteRequest(method: String, target: String, body: String, token: Stri
                 offset = (formField(query, "offset")?.toIntOrNull() ?: 0).coerceAtLeast(0),
                 limit = (formField(query, "limit")?.toIntOrNull() ?: REMOTE_VIDEOS_PAGE).coerceIn(1, REMOTE_VIDEOS_PAGE),
                 query = formField(query, "q").orEmpty().trim(),
+                sort = formField(query, "sort")?.takeIf { it in REMOTE_SORTS } ?: "date",
             )
         }
         "cmd" -> {
@@ -182,14 +194,25 @@ fun routeRemoteRequest(method: String, target: String, body: String, token: Stri
  * The search is on the title, case-insensitive, with every word having to appear. It is done
  * here on the television and costs no API unit: the titles are already in the database.
  */
-fun pageOfVideos(all: List<RemoteVideo>, offset: Int, limit: Int, query: String): Pair<List<RemoteVideo>, Int> {
+fun pageOfVideos(
+    all: List<RemoteVideo>,
+    offset: Int,
+    limit: Int,
+    query: String,
+    sort: String = "date",
+): Pair<List<RemoteVideo>, Int> {
     val words = query.lowercase().split(' ').filter { it.isNotBlank() }
     val matching = if (words.isEmpty()) {
         all
     } else {
         all.filter { video -> words.all { word -> video.title.lowercase().contains(word) } }
     }
-    return matching.drop(offset).take(limit) to matching.size
+    val ordered = when (sort) {
+        "views" -> matching.sortedByDescending { it.viewCount ?: -1L }
+        "duration" -> matching.sortedByDescending { it.durationSeconds ?: -1 }
+        else -> matching
+    }
+    return ordered.drop(offset).take(limit) to ordered.size
 }
 
 // ------------------------------------------------------------------------------ JSON
@@ -249,6 +272,7 @@ fun videosJson(videos: List<RemoteVideo>, total: Int, offset: Int): String = JSO
                         put("duration", video.durationSeconds ?: JSONObject.NULL)
                         put("watched", video.watched)
                         put("position", video.positionSeconds ?: JSONObject.NULL)
+                        put("views", video.viewCount ?: JSONObject.NULL)
                     },
                 )
             }

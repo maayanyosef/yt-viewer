@@ -145,6 +145,7 @@ class RemoteServer(
                             request.offset,
                             request.limit,
                             request.query,
+                            request.sort,
                         )
                         respond(output, 200, "application/json; charset=utf-8", videosJson(page, total, request.offset))
                     }

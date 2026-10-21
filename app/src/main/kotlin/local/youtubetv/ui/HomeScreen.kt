@@ -132,6 +132,11 @@ fun HomeScreen(
     // How one Source plays, changed on the menu's playback panel. Written through at once;
     // the panel keeps its own copy while it is open. Fork 0.5.
     onSetPlayback: (sourceId: String, PlaybackSettings) -> Unit = { _, _ -> },
+    // `Hide watched` and `Text size`, on the app settings panel. Fork 0.6.
+    hideWatched: Boolean = false,
+    onSetHideWatched: (Boolean) -> Unit = {},
+    largeText: Boolean = false,
+    onSetLargeText: (Boolean) -> Unit = {},
     // One logcat line per rail action. The rail's order and its landings are rules rather than
     // pictures, so this is what proves them without a screenshot.
     onAction: (String) -> Unit = {},
@@ -186,7 +191,7 @@ fun HomeScreen(
     // or `Right` moves it rather than waiting for the rail to be rebuilt. Fork 0.5.
     var panelOpen by remember { mutableStateOf<Panel?>(null) }
     var playbackEdit by remember { mutableStateOf<PlaybackSettings?>(null) }
-    val appSettings = appSettingsLines(videoQuality, childMode)
+    val appSettings = appSettingsLines(videoQuality, childMode, hideWatched, largeText)
 
     // Bumped whenever something that covered the rail goes away. Without it the highlight is
     // simply gone when a menu closes, because the card lost focus to the menu and nothing gave
@@ -477,6 +482,16 @@ fun HomeScreen(
                             closeMenu()
                             onApiKey()
                         }
+                        AppSettingsAction.HIDE_WATCHED -> {
+                            closeMenu()
+                            onSetHideWatched(!hideWatched)
+                            say(hideWatchedLine(!hideWatched))
+                        }
+                        AppSettingsAction.TEXT_SIZE -> {
+                            closeMenu()
+                            onSetLargeText(!largeText)
+                            say(textSizeLine(!largeText))
+                        }
                     }
                 },
                 // `Left` and `Right` change a setting where it stands. The panel stays open and
@@ -494,6 +509,14 @@ fun HomeScreen(
                         AppSettingsAction.CHILD_MODE -> {
                             onSetChildMode(!childMode)
                             onAction("Child mode is now ${if (!childMode) "on" else "off"}.")
+                            true
+                        }
+                        AppSettingsAction.HIDE_WATCHED -> {
+                            onSetHideWatched(!hideWatched)
+                            true
+                        }
+                        AppSettingsAction.TEXT_SIZE -> {
+                            onSetLargeText(!largeText)
                             true
                         }
                         else -> false

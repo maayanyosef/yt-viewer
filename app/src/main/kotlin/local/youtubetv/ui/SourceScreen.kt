@@ -45,6 +45,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -230,6 +231,8 @@ fun SourceScreen(
     onLanding: (String) -> Unit = {},
     // Child mode: no card menu and no chip row. See `ui/ChildMode.kt`.
     childMode: Boolean = false,
+    // `Hide watched`, from the app settings panel. Fork 0.6.
+    hideWatched: Boolean = false,
     // Bumped by the Activity when the household comes back from the player. The grid lost its
     // highlight to whatever had focus while the video was on, so it asks for it again on the
     // card it left, which is the video just played.
@@ -276,8 +279,15 @@ fun SourceScreen(
     }
 
     val ready = state as? SourceScreenState.Ready
-    val videos = ready?.videos.orEmpty()
     val watches = ready?.watches.orEmpty()
+    // With `Hide watched` on, the grid shows only the videos without a Watch. Everything on
+    // this screen that names an index names one into this list, so the chips, the landings
+    // and the Period panel all agree with what is drawn. The player still walks the Source's
+    // whole list. Fork 0.6.
+    val allVideos = ready?.videos.orEmpty()
+    val videos = remember(allVideos, watches, hideWatched) {
+        if (hideWatched) allVideos.filter { watches[it.videoId]?.watched != true } else allVideos
+    }
     val direction = ready?.direction ?: Direction.NEWEST_FIRST
 
     // Shuffle. Build ticket 69. The run's next video, as an index into the grid, or null when
@@ -1392,6 +1402,20 @@ private fun SourceHeader(
                     // Dimmer than the count: it is the least urgent thing on the screen.
                     Text(text = updated, color = ink.onSurfaceFaint, style = Fonts.Meta, maxLines = 1)
                 }
+            }
+        }
+        // A thin bar while the first walk runs. A Source of two thousand videos loads for a
+        // minute, and `loading 400 of 2,178` alone does not say how long is left. Fork 0.6.
+        header.progress?.let { fraction ->
+            Spacer(Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(ink.inProgressTrack),
+            ) {
+                Box(modifier = Modifier.fillMaxWidth(fraction).height(3.dp).background(ink.accent))
             }
         }
         // Clear air under the count, so a long title cannot reach up and touch it.

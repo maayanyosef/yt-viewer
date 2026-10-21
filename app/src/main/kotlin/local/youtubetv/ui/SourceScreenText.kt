@@ -178,7 +178,16 @@ fun watchDateLine(state: WatchState?, zone: ZoneId = ZoneId.systemDefault()): St
  * @property updated when the Source was last walked, as `(updated 19/09 23:14)`, or null when
  *   it never has been. Drawn dimmer than [count]: it is the least urgent thing on the screen.
  */
-data class HeaderLine(val count: String, val updated: String?)
+/** The fraction of a walk that is done, or null before the total is known. */
+fun walkProgress(loaded: Int, total: Int?): Float? =
+    if (total == null || total <= 0) null else (loaded.toFloat() / total).coerceIn(0f, 1f)
+
+data class HeaderLine(
+    val count: String,
+    val updated: String?,
+    /** How far the first walk has got, 0 to 1, or null when nothing is loading. Fork 0.6. */
+    val progress: Float? = null,
+)
 
 /**
  * The quiet line under the Source name.
@@ -200,7 +209,8 @@ data class HeaderLine(val count: String, val updated: String?)
 fun headerLine(state: SourceScreenState, zone: ZoneId = ZoneId.systemDefault()): HeaderLine =
     when (state) {
         SourceScreenState.Starting -> HeaderLine("opening", null)
-        is SourceScreenState.Walking -> HeaderLine(loadingLine(state.loaded, state.total), null)
+        is SourceScreenState.Walking ->
+            HeaderLine(loadingLine(state.loaded, state.total), null, walkProgress(state.loaded, state.total))
         // A walk that is still running says so, even though the grid is already drawing what
         // has arrived. The count of a list that is still growing would be a number the
         // household watched change, and it would read as `1 item` for a moment.
@@ -208,6 +218,7 @@ fun headerLine(state: SourceScreenState, zone: ZoneId = ZoneId.systemDefault()):
             count = state.walking
                 ?.let { loadingLine(it.loaded, it.total) }
                 ?: itemCount(state.videos.size),
+            progress = state.walking?.let { walkProgress(it.loaded, it.total) },
             updated = if (state.walking != null) {
                 null
             } else {

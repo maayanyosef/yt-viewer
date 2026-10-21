@@ -73,6 +73,22 @@ class RemoteModelTest {
     }
 
     @Test
+    fun `the list can be put by views or by length, and the Source's order is the default`() {
+        val all = listOf(
+            RemoteVideo("a", "A", 3L, 600, false, null, viewCount = 10),
+            RemoteVideo("b", "B", 2L, 1800, false, null, viewCount = 500),
+            RemoteVideo("c", "C", 1L, 60, false, null, viewCount = null),
+        )
+        assertEquals(listOf("a", "b", "c"), pageOfVideos(all, 0, 10, "").first.map { it.videoId })
+        assertEquals(listOf("b", "a", "c"), pageOfVideos(all, 0, 10, "", "views").first.map { it.videoId })
+        assertEquals(listOf("b", "a", "c"), pageOfVideos(all, 0, 10, "", "duration").first.map { it.videoId })
+        assertEquals(
+            RemoteRequest.Videos("UU1", 0, REMOTE_VIDEOS_PAGE, "", "views"),
+            routeRemoteRequest("GET", "/$token/videos?source=UU1&sort=views", "", token),
+        )
+    }
+
+    @Test
     fun `a page is cut at the offset and the limit, and the total is of every match`() {
         val all = (1..130).map { video("v$it", "Episode $it") }
         val (page, total) = pageOfVideos(all, 60, 60, "")

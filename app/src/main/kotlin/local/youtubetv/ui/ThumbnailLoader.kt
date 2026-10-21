@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -120,7 +121,16 @@ private enum class Attempt {
  * offline often enough that remembering those would leave every card a dark tile until the app
  * was killed, and a stored Source stays browsable offline on purpose. See spec section 5.4.
  */
-class HttpThumbnailLoader(private val cacheBytes: Int = CACHE_BYTES) : ThumbnailLoader {
+class HttpThumbnailLoader(
+    private val cacheBytes: Int = CACHE_BYTES,
+    /**
+     * Where downloaded pictures are kept between launches, or null for none. Fork 0.6. A
+     * television offline, which the household's is often, then still draws every card it has
+     * drawn before. Android may clear the directory when space is short, and the next online
+     * scroll fills it again.
+     */
+    private val diskDir: File? = null,
+) : ThumbnailLoader {
 
     private val cache = object : LruCache<String, ImageBitmap>(cacheBytes) {
         // Measured in bytes, so the cap is a real memory cap and not a count of pictures.
@@ -160,11 +170,15 @@ class HttpThumbnailLoader(private val cacheBytes: Int = CACHE_BYTES) : Thumbnail
                 // picture may already have been decoded.
                 image = cache.get(videoId)
                 if (image != null) return@withPermit
+                // The disk first: no network, and the same picture the last launch drew.
+                image = readDisk(videoId)?.let(::decodeBytes)
+                if (image != null) return@withPermit
                 for (url in YouTubeUrls.thumbnails(videoId, storedUrl)) {
                     val decoded = decode(url)
                     when (decoded.first) {
                         Attempt.DECODED -> {
                             image = decoded.second
+                            decoded.third?.let { writeDisk(videoId, it) }
                             return@withPermit
                         }
                         Attempt.MISSING -> Unit
@@ -186,21 +200,38 @@ class HttpThumbnailLoader(private val cacheBytes: Int = CACHE_BYTES) : Thumbnail
         return decoded
     }
 
-    private fun decode(url: String): Pair<Attempt, ImageBitmap?> {
+    private fun decode(url: String): Triple<Attempt, ImageBitmap?, ByteArray?> {
         val bytes = try {
-            download(url) ?: return Attempt.MISSING to null
+            download(url) ?: return Triple(Attempt.MISSING, null, null)
         } catch (failure: IOException) {
-            return Attempt.UNREACHABLE to null
+            return Triple(Attempt.UNREACHABLE, null, null)
         }
+        // Bytes that arrived but will not decode are as good as no picture at all.
+        val image = decodeBytes(bytes)
+        return if (image == null) Triple(Attempt.MISSING, null, null) else Triple(Attempt.DECODED, image, bytes)
+    }
 
+    private fun decodeBytes(bytes: ByteArray): ImageBitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         val options = BitmapFactory.Options().apply {
             inSampleSize = sampleSizeFor(bounds.outWidth)
         }
-        // Bytes that arrived but will not decode are as good as no picture at all.
-        val image = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
-        return if (image == null) Attempt.MISSING to null else Attempt.DECODED to image
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+    }
+
+    private fun diskFile(videoId: String): File? =
+        diskDir?.let { dir -> File(dir, videoId.filter { it.isLetterOrDigit() || it == '-' || it == '_' } + ".jpg") }
+
+    private fun readDisk(videoId: String): ByteArray? =
+        runCatching { diskFile(videoId)?.takeIf { it.isFile }?.readBytes() }.getOrNull()
+
+    private fun writeDisk(videoId: String, bytes: ByteArray) {
+        runCatching {
+            val file = diskFile(videoId) ?: return
+            file.parentFile?.mkdirs()
+            file.writeBytes(bytes)
+        }
     }
 
     /** The bytes, or null when YouTube answered that there is nothing at this address. */

@@ -95,6 +95,11 @@ fun remotePageHtml(basePath: String): String = """
   <h2>Channels and playlists</h2>
   <div class="chips" id="sources"></div>
   <input type="search" id="search" placeholder="Search in this Source" autocomplete="off">
+  <div class="row" id="sorts">
+    <button data-sort="date" class="on">By date</button>
+    <button data-sort="views">Most viewed</button>
+    <button data-sort="duration">Longest</button>
+  </div>
   <div class="videos" id="videos"></div>
   <button class="more" id="more" hidden>Show more</button>
   <div class="note" id="empty" hidden>No videos match.</div>
@@ -116,6 +121,7 @@ internal val REMOTE_PAGE_SCRIPT = """
   var source = null;
   var offset = 0;
   var query = "";
+  var sort = "date";
   var el = function (id) { return document.getElementById(id); };
   var status = el("status");
 
@@ -205,7 +211,7 @@ internal val REMOTE_PAGE_SCRIPT = """
 
   function loadVideos() {
     if (!source) return;
-    fetch(base + "/videos?source=" + encodeURIComponent(source) + "&offset=" + offset + "&q=" + encodeURIComponent(query))
+    fetch(base + "/videos?source=" + encodeURIComponent(source) + "&offset=" + offset + "&sort=" + sort + "&q=" + encodeURIComponent(query))
       .then(function (r) { return r.json(); })
       .then(function (page) {
         var list = el("videos");
@@ -214,6 +220,7 @@ internal val REMOTE_PAGE_SCRIPT = """
           var b = document.createElement("button");
           b.className = "v" + (v.watched ? " watched" : "");
           var when = v.published ? new Date(v.published).toLocaleDateString() : "";
+          if (v.views != null) when += " · " + (v.views >= 1000000 ? (v.views / 1000000).toFixed(1) + "M" : v.views >= 1000 ? Math.round(v.views / 1000) + "K" : v.views) + " views";
           var pos = v.position && !v.watched ? " · at " + clock(v.position) : "";
           b.innerHTML = '<img loading="lazy" alt="" src="https://i.ytimg.com/vi/' + encodeURIComponent(v.id) + '/mqdefault.jpg">' +
             '<div><div class="t" dir="auto">' + text(v.title) + '</div><div class="m">' +
@@ -232,6 +239,14 @@ internal val REMOTE_PAGE_SCRIPT = """
   }
 
   el("more").addEventListener("click", loadVideos);
+  document.querySelectorAll("[data-sort]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      sort = b.dataset.sort;
+      document.querySelectorAll("[data-sort]").forEach(function (x) { x.classList.toggle("on", x === b); });
+      offset = 0;
+      loadVideos();
+    });
+  });
   var typing = null;
   el("search").addEventListener("input", function (e) {
     clearTimeout(typing);

@@ -252,6 +252,12 @@ enum class AppSettingsAction {
     /** Child mode. `Left`, `Right` and `OK` all turn it around. See `ui/ChildMode.kt`. */
     CHILD_MODE,
 
+    /** Whether the grid shows watched videos. Fork 0.6. */
+    HIDE_WATCHED,
+
+    /** Normal or large text. Fork 0.6. */
+    TEXT_SIZE,
+
     /** Shows the phone remote's QR code. */
     PHONE_REMOTE,
 
@@ -269,10 +275,17 @@ const val PLAYBACK_SETTINGS_TITLE = "Playback"
 const val SETTINGS_HINT = "Left and Right change a setting. OK or BACK keeps it."
 
 /** The app settings panel's lines, each saying the setting it is on. */
-fun appSettingsLines(videoQuality: VideoQuality, childMode: Boolean): List<Pair<AppSettingsAction, String>> =
+fun appSettingsLines(
+    videoQuality: VideoQuality,
+    childMode: Boolean,
+    hideWatched: Boolean = false,
+    largeText: Boolean = false,
+): List<Pair<AppSettingsAction, String>> =
     listOf(
         AppSettingsAction.VIDEO_QUALITY to videoQualityLine(videoQuality),
         AppSettingsAction.CHILD_MODE to childModeLine(childMode),
+        AppSettingsAction.HIDE_WATCHED to hideWatchedLine(hideWatched),
+        AppSettingsAction.TEXT_SIZE to textSizeLine(largeText),
         AppSettingsAction.PHONE_REMOTE to PHONE_REMOTE_LINE,
         AppSettingsAction.API_KEY to API_KEY_LINE,
     )
