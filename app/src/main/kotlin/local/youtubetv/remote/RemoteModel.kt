@@ -140,6 +140,12 @@ sealed interface RemoteRequest {
 
     data class Command(val command: RemoteCommand) : RemoteRequest
 
+    /** `GET export`: the database file, for the phone to keep. Fork 0.7. */
+    data object Export : RemoteRequest
+
+    /** `POST import`: a database file the phone kept, to replace the live one. Fork 0.7. */
+    data object Import : RemoteRequest
+
     /** A command the page sent that this build does not know, or one with a bad number. */
     data object BadCommand : RemoteRequest
     data object NotFound : RemoteRequest
@@ -184,6 +190,8 @@ fun routeRemoteRequest(method: String, target: String, body: String, token: Stri
             if (method != "POST") return RemoteRequest.MethodNotAllowed
             parseRemoteCommand(body)?.let { RemoteRequest.Command(it) } ?: RemoteRequest.BadCommand
         }
+        "export" -> if (method == "GET") RemoteRequest.Export else RemoteRequest.MethodNotAllowed
+        "import" -> if (method == "POST") RemoteRequest.Import else RemoteRequest.MethodNotAllowed
         else -> RemoteRequest.NotFound
     }
 }

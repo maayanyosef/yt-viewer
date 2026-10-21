@@ -1,7 +1,9 @@
 package local.youtubetv.remote
 
 import local.youtubetv.apikey.isLocalNetworkAddress
+import local.youtubetv.data.isSqliteFile
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -18,6 +20,9 @@ const val REMOTE_PREFERRED_PORT = 8643
 
 /** The most a request may carry, head and body each. A command is a few dozen bytes. */
 private const val REMOTE_MAX_BYTES = 8 * 1024
+
+/** The most an imported database may be. The household's, with two thousand videos, is about 2 MB. */
+private const val IMPORT_MAX_BYTES = 256L * 1024 * 1024
 
 private const val READ_TIMEOUT_MS = 10_000
 
@@ -37,12 +42,20 @@ private const val READ_TIMEOUT_MS = 10_000
  * @param videos the videos of one Source, read from storage. Called on the server's thread.
  * @param onCommand runs one command. Called on the server's thread; the implementation posts
  *   to the main thread and returns at once.
+ * @param exportDatabase a consistent copy of the database file for the phone to download, or
+ *   null when none can be made. Fork 0.7.
+ * @param importDatabase takes a file the phone uploaded, already checked to be SQLite, and
+ *   answers null when it was accepted or a sentence saying why not. Fork 0.7.
+ * @param importDir where an upload is written while it arrives.
  */
 class RemoteServer(
     private val token: String,
     private val snapshot: () -> RemoteSnapshot?,
     private val videos: (sourceId: String) -> List<RemoteVideo>,
     private val onCommand: (RemoteCommand) -> Unit,
+    private val exportDatabase: () -> File? = { null },
+    private val importDatabase: (File) -> String? = { "This television does not take a backup." },
+    private val importDir: File? = null,
     private val log: (String) -> Unit = {},
     private val preferredPort: Int = REMOTE_PREFERRED_PORT,
     private val acceptFrom: (InetAddress) -> Boolean = ::isLocalNetworkAddress,
@@ -117,9 +130,14 @@ class RemoteServer(
                 val target = requestLine[1]
                 val length = lines.drop(1)
                     .firstOrNull { it.startsWith("content-length:", ignoreCase = true) }
-                    ?.substringAfter(':')?.trim()?.toIntOrNull() ?: 0
-                if (length !in 0..REMOTE_MAX_BYTES) return respond(output, 413, "text/plain", "Too large")
-                val body = readBody(input, length)
+                    ?.substringAfter(':')?.trim()?.toLongOrNull() ?: 0L
+                // An import is the one request whose body is a file and not a form. It is
+                // routed before its body is read, and its body goes to disk, never to a String.
+                if (routeRemoteRequest(method, target, "", token) == RemoteRequest.Import) {
+                    return serveImport(input, output, length)
+                }
+                if (length !in 0..REMOTE_MAX_BYTES.toLong()) return respond(output, 413, "text/plain", "Too large")
+                val body = readBody(input, length.toInt())
                 when (val request = routeRemoteRequest(method, target, body, token)) {
                     RemoteRequest.NotFound -> respond(output, 404, "text/plain", "Not found")
                     RemoteRequest.MethodNotAllowed -> respond(output, 405, "text/plain", "Not allowed")
@@ -154,9 +172,74 @@ class RemoteServer(
                         onCommand(request.command)
                         respond(output, 200, "application/json; charset=utf-8", "{\"ok\":true}")
                     }
+                    RemoteRequest.Export -> {
+                        val file = exportDatabase()
+                        if (file == null) {
+                            respond(output, 503, "text/plain", "No backup could be made.")
+                        } else {
+                            log("The phone downloaded a backup of ${file.length()} bytes.")
+                            respondFile(output, file, "yt-viewer-backup.db")
+                        }
+                    }
+                    // Routed above, before the body was read. Here only so the `when` is whole.
+                    RemoteRequest.Import -> respond(output, 400, "text/plain", "Bad request")
                 }
             }
         }
+    }
+
+    /**
+     * Takes the phone's backup file. The body is written straight to a file under [importDir],
+     * checked to be SQLite by its first bytes, and handed to [importDatabase], which decides.
+     */
+    private fun serveImport(input: InputStream, output: OutputStream, length: Long) {
+        val dir = importDir
+        if (dir == null) return respond(output, 503, "text/plain", "This television does not take a backup.")
+        if (length !in 1..IMPORT_MAX_BYTES) return respond(output, 413, "text/plain", "The file is too large.")
+        dir.mkdirs()
+        val file = File(dir, "upload-${System.currentTimeMillis()}.db")
+        try {
+            file.outputStream().use { out ->
+                val buffer = ByteArray(64 * 1024)
+                var left = length
+                while (left > 0) {
+                    val count = input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
+                    if (count < 0) break
+                    out.write(buffer, 0, count)
+                    left -= count
+                }
+            }
+            val head = file.inputStream().use { stream -> ByteArray(16).also { stream.read(it) } }
+            if (file.length() != length || !isSqliteFile(head)) {
+                file.delete()
+                log("The phone sent a backup that is not an SQLite file, or arrived short. Refused.")
+                return respond(output, 400, "text/plain", "That is not a YT Viewer backup file.")
+            }
+            val problem = importDatabase(file)
+            if (problem != null) {
+                file.delete()
+                return respond(output, 400, "text/plain", problem)
+            }
+            log("The phone's backup of $length bytes was accepted. The app restarts to load it.")
+            respond(output, 200, "text/plain", "Loaded. The television app closed to load the backup; open it again.")
+        } catch (failure: IOException) {
+            file.delete()
+            respond(output, 400, "text/plain", "The upload did not finish.")
+        }
+    }
+
+    private fun respondFile(output: OutputStream, file: File, name: String) {
+        val head = buildString {
+            append("HTTP/1.1 200 OK\r\n")
+            append("Content-Type: application/octet-stream\r\n")
+            append("Content-Length: ${file.length()}\r\n")
+            append("Content-Disposition: attachment; filename=\"$name\"\r\n")
+            append("Cache-Control: no-store\r\n")
+            append("Connection: close\r\n\r\n")
+        }
+        output.write(head.toByteArray(Charsets.ISO_8859_1))
+        file.inputStream().use { it.copyTo(output) }
+        output.flush()
     }
 
     private fun readHead(input: InputStream): String? {

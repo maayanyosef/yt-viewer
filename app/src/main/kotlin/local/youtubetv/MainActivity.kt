@@ -33,6 +33,7 @@ import java.util.concurrent.Executors
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.system.exitProcess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -53,6 +54,8 @@ import local.youtubetv.apikey.deviceLocalAddress
 import local.youtubetv.apikey.firstScreen
 import local.youtubetv.apikey.keyPageUrl
 import local.youtubetv.apikey.newKeyPageToken
+import local.youtubetv.data.DATABASE_IMPORT_SUFFIX
+import local.youtubetv.data.DATABASE_NAME
 import local.youtubetv.data.Landing
 import local.youtubetv.data.PlaybackSettings
 import local.youtubetv.data.SourceCard
@@ -64,6 +67,7 @@ import local.youtubetv.data.ShuffleBack
 import local.youtubetv.data.ShuffleRun
 import local.youtubetv.data.previousPlayable
 import local.youtubetv.data.StoredSource
+import local.youtubetv.data.applyPendingDatabaseImport
 import local.youtubetv.data.StoredVideo
 import local.youtubetv.data.WatchLog
 import local.youtubetv.refresh.REFRESH_INTERVAL_MINUTES
@@ -389,6 +393,9 @@ class MainActivity : ComponentActivity() {
     /** The remote page's address, for the QR code, or null on no home network. */
     private var remoteAddress by mutableStateOf<String?>(null)
 
+    /** The one database helper, kept for the backup the phone can download. Fork 0.7. */
+    private lateinit var databaseHelper: YouTubeTvDatabase
+
     /** Child mode. See `ui/ChildMode.kt`. */
     private lateinit var childModeStore: ChildModeStore
     private var childMode by mutableStateOf(false)
@@ -648,9 +655,15 @@ class MainActivity : ComponentActivity() {
             androidPackage = packageName,
             androidCertSha1 = certSha1,
         )
+        // A backup the phone sent on the last run replaces the live file now, before anything
+        // opens it. Fork 0.7.
+        if (applyPendingDatabaseImport(this)) {
+            Log.i(LOG_TAG, "A backup from the phone replaced the database on this launch.")
+        }
         // One helper for the whole app. Two over the same file would each think they owned
         // its version number.
         val database = YouTubeTvDatabase(this)
+        databaseHelper = database
         // The one store, built before the log, because the log writes one column of the video
         // cache: an ordinary `played` entry ends the Newly listed state of everything at or
         // past the video played. A Shuffle play does not: see build ticket 72, "A Shuffle play never ends Newly listed".
@@ -1998,6 +2011,9 @@ class MainActivity : ComponentActivity() {
             snapshot = ::remoteSnapshot,
             videos = ::remoteVideos,
             onCommand = { command -> runOnUiThread { runRemoteCommand(command) } },
+            exportDatabase = ::exportDatabase,
+            importDatabase = ::importDatabase,
+            importDir = File(cacheDir, "import"),
             log = { line -> Log.i(LOG_TAG, line) },
         )
         val port = runCatching { server.start() }.getOrElse { failure ->
@@ -2114,6 +2130,42 @@ class MainActivity : ComponentActivity() {
                     viewCount = video.viewCount,
                 )
             }
+    }
+
+    /**
+     * A consistent copy of the database for the phone to download. Fork 0.7.
+     *
+     * The write-ahead log is folded into the main file first, so the copy holds every write
+     * made so far and not only the ones SQLite had already checkpointed. Server thread.
+     */
+    private fun exportDatabase(): File? = runCatching {
+        val live = getDatabasePath(DATABASE_NAME)
+        databaseHelper.writableDatabase.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
+        val copy = File(cacheDir, "yt-viewer-backup.db")
+        live.copyTo(copy, overwrite = true)
+        copy
+    }.onFailure { Log.w(LOG_TAG, "The backup could not be made.", it) }.getOrNull()
+
+    /**
+     * Puts the phone's backup in place for the next launch and closes the app. Fork 0.7.
+     *
+     * It is applied on the next launch and not now: see `applyPendingDatabaseImport`. The
+     * close is a moment after this returns, so the phone gets its answer first.
+     */
+    private fun importDatabase(file: File): String? {
+        val pending = File(getDatabasePath(DATABASE_NAME).path + DATABASE_IMPORT_SUFFIX)
+        pending.parentFile?.mkdirs()
+        if (!file.renameTo(pending)) {
+            runCatching { file.copyTo(pending, overwrite = true); file.delete() }
+                .onFailure { return "The backup could not be written on the television." }
+        }
+        Log.i(LOG_TAG, "A backup is in place for the next launch. The app closes now to load it.")
+        lifecycleScope.launch {
+            delay(1_500)
+            finishAffinity()
+            exitProcess(0)
+        }
+        return null
     }
 
     /** Runs one command from the phone. Main thread. */

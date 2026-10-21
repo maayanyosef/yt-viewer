@@ -104,6 +104,16 @@ fun remotePageHtml(basePath: String): String = """
   <button class="more" id="more" hidden>Show more</button>
   <div class="note" id="empty" hidden>No videos match.</div>
 </section>
+<section>
+  <h2>Backup</h2>
+  <div class="note">The backup is the television's whole database: every Source, every watch and every setting of a Source. It does not hold the API key.</div>
+  <div class="row">
+    <a id="export" class="v" style="justify-content:center;text-decoration:none;color:inherit;flex:1" download="yt-viewer-backup.db">Download a backup</a>
+    <button id="importPick">Restore a backup…</button>
+    <input type="file" id="importFile" accept=".db,application/octet-stream,application/x-sqlite3" hidden>
+  </div>
+  <div class="note" id="importNote"></div>
+</section>
 <script>$REMOTE_PAGE_SCRIPT</script>
 </body>
 </html>
@@ -251,6 +261,19 @@ internal val REMOTE_PAGE_SCRIPT = """
   el("search").addEventListener("input", function (e) {
     clearTimeout(typing);
     typing = setTimeout(function () { query = e.target.value; offset = 0; loadVideos(); }, 250);
+  });
+
+  el("export").href = base + "/export";
+  el("importPick").addEventListener("click", function () { el("importFile").click(); });
+  el("importFile").addEventListener("change", function () {
+    var file = el("importFile").files[0];
+    if (!file) return;
+    if (!confirm("Replace everything on the television with this backup? Its current Sources and watch history will be lost. The app will close and has to be opened again.")) { el("importFile").value = ""; return; }
+    el("importNote").textContent = "Sending " + Math.round(file.size / 1024) + " KB…";
+    fetch(base + "/import", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: file })
+      .then(function (r) { return r.text().then(function (t) { el("importNote").textContent = t; }); })
+      .catch(function () { el("importNote").textContent = "The television did not answer. If the app closed, the backup was loaded: open the app again."; });
+    el("importFile").value = "";
   });
 
   function poll() {

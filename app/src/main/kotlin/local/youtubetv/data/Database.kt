@@ -1,6 +1,7 @@
 package local.youtubetv.data
 
 import android.content.Context
+import java.io.File
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
@@ -20,7 +21,42 @@ import android.database.sqlite.SQLiteOpenHelper
  *   Nothing can get these back. They are the household's own record of what it watched, and
  *   they are what cloud sync will one day replay. **No upgrade may ever drop them.**
  */
-private const val DATABASE_NAME = "youtube-tv.db"
+const val DATABASE_NAME = "youtube-tv.db"
+
+/**
+ * A database file the phone sent, waiting to replace the live one on the next launch. Fork 0.7.
+ *
+ * It is applied on the next launch and never while the app runs, because the one open
+ * `SQLiteOpenHelper` holds the live file and every store holds the helper. Closing all of
+ * that and reopening it mid-run is a whole second start-up; a real one is simpler and safer.
+ */
+const val DATABASE_IMPORT_SUFFIX = ".import"
+
+/** The first sixteen bytes of every SQLite database file. */
+private val SQLITE_HEADER = "SQLite format 3\u0000".toByteArray(Charsets.ISO_8859_1)
+
+/** Whether [bytes] begin like an SQLite file. Anything else is refused before it is written. */
+fun isSqliteFile(bytes: ByteArray): Boolean =
+    bytes.size >= SQLITE_HEADER.size && bytes.copyOfRange(0, SQLITE_HEADER.size).contentEquals(SQLITE_HEADER)
+
+/**
+ * Puts a waiting import in the live file's place, or does nothing when none is waiting.
+ *
+ * Called before the helper is built, so nothing has the old file open. The journal files go
+ * with the old database: a `-wal` left behind would be replayed over the new file.
+ *
+ * @return true when a waiting import replaced the live database.
+ */
+fun applyPendingDatabaseImport(context: Context): Boolean {
+    val live = context.getDatabasePath(DATABASE_NAME)
+    val pending = File(live.path + DATABASE_IMPORT_SUFFIX)
+    if (!pending.isFile) return false
+    for (suffix in listOf("", "-wal", "-shm", "-journal")) {
+        File(live.path + suffix).delete()
+    }
+    live.parentFile?.mkdirs()
+    return pending.renameTo(live)
+}
 
 /**
  * Bumped whenever a table in here changes shape.

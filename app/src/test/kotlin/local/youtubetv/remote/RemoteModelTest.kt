@@ -35,6 +35,9 @@ class RemoteModelTest {
             routeRemoteRequest("POST", "/$token/cmd", "action=seek&by=-10", token),
         )
         assertEquals(RemoteRequest.MethodNotAllowed, routeRemoteRequest("GET", "/$token/cmd", "", token))
+        assertEquals(RemoteRequest.Export, routeRemoteRequest("GET", "/$token/export", "", token))
+        assertEquals(RemoteRequest.Import, routeRemoteRequest("POST", "/$token/import", "", token))
+        assertEquals(RemoteRequest.MethodNotAllowed, routeRemoteRequest("GET", "/$token/import", "", token))
         assertEquals(RemoteRequest.BadCommand, routeRemoteRequest("POST", "/$token/cmd", "action=dance", token))
     }
 
