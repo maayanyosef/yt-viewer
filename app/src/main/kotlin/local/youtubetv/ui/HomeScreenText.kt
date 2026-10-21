@@ -240,6 +240,12 @@ enum class SourceMenuAction {
 
     /** Opens the key screen. Build ticket 64. It is about the app, not about this Source. */
     API_KEY,
+
+    /** Shows the phone remote's QR code. About the app, like [API_KEY]. */
+    PHONE_REMOTE,
+
+    /** Turns child mode on or off. About the app. See `ui/ChildMode.kt`. */
+    CHILD_MODE,
 }
 
 /**
@@ -250,6 +256,17 @@ enum class SourceMenuAction {
  * unwatched`.
  */
 const val API_KEY_LINE = "API key: replace or remove"
+
+/** The Source menu's line that shows the phone remote's QR code. */
+const val PHONE_REMOTE_LINE = "Phone remote: show the QR code"
+
+const val PHONE_REMOTE_TITLE = "Control the television from your phone"
+const val PHONE_REMOTE_LEAD =
+    "Scan the code with your phone's camera. The page that opens plays, pauses and picks videos, " +
+        "and sets a sleep timer. It works while the phone is on the same wifi and the app is on screen. " +
+        "Add it to your phone's home screen to keep it."
+const val PHONE_REMOTE_NO_NETWORK = "The television is on no home network, so there is no address to show."
+const val PHONE_REMOTE_WAY_OUT = "Press BACK to close."
 
 const val OPEN_AT_NEXT_UNWATCHED = "Open at Next unwatched"
 const val OPEN_AT_LAST_PLAYED = "Open at Last played"
@@ -347,6 +364,7 @@ fun sourceMenuLines(
     card: SourceCard,
     everythingUnwatchedCount: Int?,
     videoQuality: VideoQuality = VideoQuality.AUTO,
+    childMode: Boolean = false,
 ): List<SourceMenuLine> =
     listOf(
         SourceMenuLine(
@@ -395,6 +413,8 @@ fun sourceMenuLines(
             enabled = true,
         ),
         SourceMenuLine(SourceMenuAction.API_KEY, API_KEY_LINE, enabled = true),
+        SourceMenuLine(SourceMenuAction.PHONE_REMOTE, PHONE_REMOTE_LINE, enabled = true),
+        SourceMenuLine(SourceMenuAction.CHILD_MODE, childModeLine(childMode), enabled = true),
         SourceMenuLine(
             SourceMenuAction.MARK_EVERYTHING_UNWATCHED,
             if (everythingUnwatchedCount == null) {

@@ -297,7 +297,7 @@ fun ApiKeyScreen(
  * reads best.
  */
 @Composable
-private fun QrCodeImage(text: String, modifier: Modifier = Modifier) {
+internal fun QrCodeImage(text: String, modifier: Modifier = Modifier) {
     val code = remember(text) { QrCode.encodeText(text, QrCode.Ecc.MEDIUM) }
     Canvas(modifier = modifier.background(Color.White)) {
         val quiet = 4

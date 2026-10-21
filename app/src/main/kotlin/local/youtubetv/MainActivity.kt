@@ -27,6 +27,7 @@ import androidx.tv.material3.darkColorScheme
 import java.time.Instant
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -84,19 +85,35 @@ import local.youtubetv.player.PlayerEvent
 import local.youtubetv.player.PlayerNotice
 import local.youtubetv.player.PlayerScreen
 import local.youtubetv.player.UNATTENDED_LIMIT_SECONDS
+import local.youtubetv.player.UP_NEXT_EMPTY
+import local.youtubetv.player.UpNextUi
 import local.youtubetv.player.VideoQuality
 import local.youtubetv.player.VideoQualityStore
+import local.youtubetv.remote.RemoteCommand
+import local.youtubetv.remote.RemoteNowPlaying
+import local.youtubetv.remote.RemoteScreen
+import local.youtubetv.remote.RemoteServer
+import local.youtubetv.remote.RemoteSettings
+import local.youtubetv.remote.RemoteSnapshot
+import local.youtubetv.remote.RemoteSource
+import local.youtubetv.remote.RemoteVideo
+import local.youtubetv.remote.SleepTimer
+import local.youtubetv.remote.remotePageUrl
 import local.youtubetv.player.afterVideo
 import local.youtubetv.player.coverMayComeDown
 import local.youtubetv.player.isUnattended
+import local.youtubetv.player.moved
 import local.youtubetv.player.playerAction
 import local.youtubetv.player.playerKeepsKey
 import local.youtubetv.player.resumeFromSeconds
+import local.youtubetv.player.upNextVideos
 import local.youtubetv.ui.AddSourceModel
 import local.youtubetv.ui.AddSourceScreen
 import local.youtubetv.ui.ApiKeyScreen
 import local.youtubetv.ui.HomeModel
 import local.youtubetv.ui.HomeScreen
+import local.youtubetv.ui.HomeScreenState
+import local.youtubetv.ui.ChildModeStore
 import local.youtubetv.ui.HttpThumbnailLoader
 import local.youtubetv.ui.thumbnailCacheBytes
 import local.youtubetv.ui.RenameSourceModel
@@ -356,6 +373,26 @@ class MainActivity : ComponentActivity() {
     /** The cap the next page is built with, and what the menu line says. */
     private var videoQuality by mutableStateOf(VideoQuality.AUTO)
 
+    // ------------------------------------------------------------- the phone remote
+
+    private lateinit var remoteSettings: RemoteSettings
+    private var remoteServer: RemoteServer? = null
+    private var remoteAddressJob: Job? = null
+
+    /** The remote page's address, for the QR code, or null on no home network. */
+    private var remoteAddress by mutableStateOf<String?>(null)
+
+    /** Child mode. See `ui/ChildMode.kt`. */
+    private lateinit var childModeStore: ChildModeStore
+    private var childMode by mutableStateOf(false)
+
+    /** The up-next row over the player, or null when it is not up. `Down` opens it. */
+    private var upNext by mutableStateOf<UpNextUi?>(null)
+
+    /** The sleep timer the phone set. In memory only: a relaunch is a new evening. */
+    private var sleepTimer by mutableStateOf(SleepTimer.OFF)
+    private var sleepJob: Job? = null
+
     /** Bumped when the household comes back from the player, so the grid takes focus again. */
     private var returnedFromPlayer by mutableLongStateOf(0L)
 
@@ -446,6 +483,12 @@ class MainActivity : ComponentActivity() {
             if (playback != null) {
                 lastBackAtMillis = now
                 lastKeyAtMillis = now
+                // The up-next row closes first, on this route as on the key route. One press
+                // of `BACK` on the row must not leave the player.
+                if (upNext != null) {
+                    upNext = null
+                    return
+                }
                 playerNudge += 1
                 leavePlayback()
                 return
@@ -715,6 +758,9 @@ class MainActivity : ComponentActivity() {
 
         videoQualityStore = VideoQualityStore(this)
         videoQuality = videoQualityStore.read()
+        remoteSettings = RemoteSettings(this)
+        childModeStore = ChildModeStore(this)
+        childMode = childModeStore.read()
 
         setContent {
             YouTubeTvTheme {
@@ -839,6 +885,9 @@ class MainActivity : ComponentActivity() {
                                 videoQuality = quality
                                 videoQualityStore.write(quality)
                             },
+                            remoteAddress = remoteAddress,
+                            childMode = childMode,
+                            onSetChildMode = ::switchChildMode,
                             // One `range` entry. On the Activity's scope and off the main
                             // thread, exactly like every other write to the household's log.
                             onMarkEverythingUnwatched = { card ->
@@ -913,6 +962,7 @@ class MainActivity : ComponentActivity() {
                             // is what makes them checkable from logcat rather than from a
                             // screenshot.
                             onLanding = { line -> Log.i(LOG_TAG, line) },
+                            childMode = childMode,
                             returnedFromPlayer = returnedFromPlayer,
                             landOnVideoId = landOnVideoId,
                             // The player is drawn over this screen rather than navigated to,
@@ -934,6 +984,8 @@ class MainActivity : ComponentActivity() {
                             covered = covered,
                             notice = playerNotice,
                             endOfSource = endOfSource,
+                            upNext = upNext,
+                            thumbnails = thumbnails,
                         )
                         // Ticket 17: the cover comes down when the player says the next
                         // video is on the page, which is the nearest thing to a painted
@@ -1525,6 +1577,8 @@ class MainActivity : ComponentActivity() {
     ) {
         val previous = playback
         if (previous != null) finishWrite { previous.session.onLeaving() }
+        // A new video is on the page, so the row that chose it, if one did, is done.
+        upNext = null
 
         val resumeFrom = resumeFromSeconds(model.watchState(video.videoId), playFromStart)
         val session = PlaybackSession(
@@ -1596,6 +1650,7 @@ class MainActivity : ComponentActivity() {
     private fun leavePlayback(landOn: StoredVideo? = null) {
         val current = playback ?: return
         cancelCountdown()
+        upNext = null
         // The player is going, and the grid takes the whole screen. A cover left standing
         // would be over the next play of the next video, which has no wall behind it.
         covered = false
@@ -1629,6 +1684,16 @@ class MainActivity : ComponentActivity() {
      */
     private fun onVideoFinished() {
         val current = playback ?: return
+        // The phone asked for the evening to end with this video. Spec section 8.6's chain
+        // stops here, and the grid lands on the video that would have come next.
+        if (sleepTimer.stopAfterThisVideo) {
+            Log.i(LOG_TAG, "The sleep timer stopped playback at the end of ${current.video.videoId}.")
+            sleepTimer = SleepTimer.OFF
+            sleepJob?.cancel()
+            sleepJob = null
+            leavePlayback()
+            return
+        }
         // This video's own Source, carried by the play, not a field. See [Playback].
         val ready = current.model.ready()
         // With Shuffle on, the next video is the run's next one, which is random and never
@@ -1648,7 +1713,8 @@ class MainActivity : ComponentActivity() {
             nowMillis = SystemClock.elapsedRealtime(),
             limitSeconds = unattendedLimitSeconds,
         )
-        val autoplayNext = ready?.autoplayNext ?: StoredSource.AUTOPLAY_NEXT_DEFAULT
+        // In child mode every Source rolls on, whatever its own chip says. See `ui/ChildMode.kt`.
+        val autoplayNext = childMode || (ready?.autoplayNext ?: StoredSource.AUTOPLAY_NEXT_DEFAULT)
         when (val ending = afterVideo(next, autoplayNext, unattended)) {
             is AfterVideo.Countdown -> {
                 Log.i(LOG_TAG, "Autoplay-next: loading ${ending.next.videoId} behind a countdown.")
@@ -1871,6 +1937,228 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // ------------------------------------------------------------- the phone remote
+
+    /**
+     * Starts the remote's page, with the token this television keeps, and keeps its address
+     * current the same way the Key page does.
+     */
+    private fun startRemote() {
+        if (remoteServer != null) return
+        val token = remoteSettings.token()
+        val server = RemoteServer(
+            token = token,
+            snapshot = ::remoteSnapshot,
+            videos = ::remoteVideos,
+            onCommand = { command -> runOnUiThread { runRemoteCommand(command) } },
+            log = { line -> Log.i(LOG_TAG, line) },
+        )
+        val port = runCatching { server.start() }.getOrElse { failure ->
+            Log.w(LOG_TAG, "The phone remote could not start.", failure)
+            return
+        }
+        remoteServer = server
+        remoteAddressJob = lifecycleScope.launch(Dispatchers.IO) {
+            var shown: String? = null
+            var first = true
+            while (true) {
+                val address = deviceLocalAddress()?.hostAddress
+                if (first || address != shown) {
+                    ensureActive()
+                    val url = address?.let { remotePageUrl(it, port, token) }
+                    withContext(Dispatchers.Main) { remoteAddress = url }
+                    if (url != null) Log.i(LOG_TAG, "The phone remote is at $url.")
+                    shown = address
+                    first = false
+                }
+                delay(KEY_ADDRESS_RECHECK_MILLIS)
+            }
+        }
+    }
+
+    private fun stopRemote() {
+        remoteAddressJob?.cancel()
+        remoteAddressJob = null
+        remoteServer?.stop()
+        remoteServer = null
+        remoteAddress = null
+    }
+
+    /**
+     * What the television is showing, read on the main thread and handed to the server's
+     * thread. The wait is bounded: a main thread busy for two seconds answers nothing rather
+     * than holding the phone's request open.
+     */
+    private fun remoteSnapshot(): RemoteSnapshot? {
+        var result: RemoteSnapshot? = null
+        val done = CountDownLatch(1)
+        runOnUiThread {
+            result = runCatching { buildRemoteSnapshot() }.getOrNull()
+            done.countDown()
+        }
+        done.await(2, TimeUnit.SECONDS)
+        return result
+    }
+
+    private fun buildRemoteSnapshot(): RemoteSnapshot {
+        val screen = when {
+            keyScreen != null || adding != null || renaming != null -> RemoteScreen.OTHER
+            playback != null -> RemoteScreen.PLAYER
+            open != null -> RemoteScreen.SOURCE
+            else -> RemoteScreen.HOME
+        }
+        val now = playback?.let { current ->
+            val ui = current.session.state.value
+            RemoteNowPlaying(
+                videoId = current.video.videoId,
+                title = current.video.title,
+                positionSeconds = ui.positionSeconds,
+                durationSeconds = ui.durationSeconds ?: current.video.durationSeconds,
+                playing = ui.playing,
+            )
+        }
+        val cards = (home.state.value as? HomeScreenState.Ready)?.cards.orEmpty()
+        return RemoteSnapshot(
+            screen = screen,
+            openSourceId = open?.sourceId,
+            nowPlaying = now,
+            sources = cards.map { card ->
+                RemoteSource(card.sourceId, railCardName(card), card.listedCount)
+            },
+            sleep = sleepTimer,
+            nowMillis = SystemClock.elapsedRealtime(),
+            childMode = childMode,
+        )
+    }
+
+    private fun switchChildMode(on: Boolean) {
+        childMode = on
+        childModeStore.write(on)
+        Log.i(LOG_TAG, "Child mode is now ${if (on) "on" else "off"}.")
+    }
+
+    /** One Source's videos for the phone, in that Source's Direction. SQLite, off the main thread. */
+    private fun remoteVideos(sourceId: String): List<RemoteVideo> {
+        val listed = sources.listedVideos(sourceId).filter { !it.isShort }
+        val states = watches.watchStates(listed)
+        return listed
+            .map { video ->
+                val state = states[video.videoId]
+                RemoteVideo(
+                    videoId = video.videoId,
+                    title = video.title,
+                    publishedAtMillis = video.videoPublishedAt?.toEpochMilli(),
+                    durationSeconds = video.durationSeconds,
+                    watched = state?.watched == true,
+                    positionSeconds = state?.positionSeconds,
+                )
+            }
+    }
+
+    /** Runs one command from the phone. Main thread. */
+    private fun runRemoteCommand(command: RemoteCommand) {
+        // A phone press counts as a key for the unattended stop, exactly as a remote press does.
+        lastKeyAtMillis = SystemClock.elapsedRealtime()
+        // A screen that takes typing is left alone. The phone would be typing into it blind.
+        if (keyScreen != null || adding != null || renaming != null) return
+        val current = playback
+        when (command) {
+            RemoteCommand.TogglePlay -> current?.let {
+                if (countdown != null) playCountdownNow() else it.controller.togglePlay()
+            }
+            RemoteCommand.Play -> current?.let {
+                if (countdown != null) playCountdownNow() else it.controller.play()
+            }
+            RemoteCommand.Pause -> if (countdown == null) current?.controller?.pause()
+            is RemoteCommand.SeekBy -> if (countdown == null) current?.controller?.seekBy(command.seconds)
+            RemoteCommand.NextVideo -> if (current != null) stepVideo(PlayStep.NEXT)
+            RemoteCommand.PreviousVideo -> if (current != null) stepVideo(PlayStep.PREVIOUS)
+            RemoteCommand.Back -> when {
+                current != null -> {
+                    lastBackAtMillis = SystemClock.elapsedRealtime()
+                    leavePlayback()
+                }
+                open != null -> closeSource()
+            }
+            is RemoteCommand.OpenSource -> {
+                if (current != null) leavePlayback()
+                if (open?.sourceId != command.sourceId) {
+                    if (open != null) closeSource()
+                    openSourceById(command.sourceId, Landing.DEFAULT)
+                }
+            }
+            is RemoteCommand.PlayVideo -> playFromRemote(command.sourceId, command.videoId)
+            is RemoteCommand.Sleep -> setSleepTimer(command)
+            is RemoteCommand.ChildMode -> switchChildMode(command.on)
+        }
+    }
+
+    /** Opens a Source by id alone, reading its name from storage first. */
+    private fun openSourceById(sourceId: String, landing: Landing) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val row = sources.source(sourceId) ?: return@launch
+            val name = sourceNameOrId(row.typedName, row.title, sourceId)
+            withContext(Dispatchers.Main) { if (open == null) openSource(sourceId, name, landing) }
+        }
+    }
+
+    /**
+     * Plays one video the phone chose. The Source is opened first when it is not the open one,
+     * and the play waits for its list to arrive, bounded, because a Source that was never
+     * walked walks now and a video far down a long one may take a few seconds to be listed.
+     */
+    private fun playFromRemote(sourceId: String, videoId: String) {
+        if (playback != null) {
+            val same = open?.sourceId == sourceId
+            leavePlayback()
+            if (same) {
+                open?.model?.ready()?.videos?.firstOrNull { it.videoId == videoId }?.let { video ->
+                    startPlayback(video, playFromStart = false, byShuffle = false)
+                    return
+                }
+            }
+        }
+        if (open != null && open?.sourceId != sourceId) closeSource()
+        if (open == null) openSourceById(sourceId, Landing.DEFAULT)
+        lifecycleScope.launch {
+            val started = SystemClock.elapsedRealtime()
+            while (SystemClock.elapsedRealtime() - started < REMOTE_PLAY_WAIT_MILLIS) {
+                val model = open?.takeIf { it.sourceId == sourceId }?.model
+                val video = model?.ready()?.videos?.firstOrNull { it.videoId == videoId }
+                if (video != null && playback == null) {
+                    Log.i(LOG_TAG, "The phone remote plays ${video.videoId}.")
+                    startPlayback(video, playFromStart = false, byShuffle = false)
+                    return@launch
+                }
+                delay(200)
+            }
+            Log.w(LOG_TAG, "The phone remote asked for $videoId in $sourceId, and it was not listed in time.")
+        }
+    }
+
+    /** The phone set, or cleared, the sleep timer. */
+    private fun setSleepTimer(command: RemoteCommand.Sleep) {
+        sleepJob?.cancel()
+        sleepJob = null
+        val stopAt = command.minutes?.let { SystemClock.elapsedRealtime() + it * 60_000L }
+        sleepTimer = SleepTimer(stopAfterThisVideo = command.afterThisVideo, stopAtMillis = stopAt)
+        Log.i(
+            LOG_TAG,
+            when {
+                !sleepTimer.isSet -> "The sleep timer is off."
+                else -> "Sleep timer: after this video ${command.afterThisVideo}, minutes ${command.minutes}."
+            },
+        )
+        if (stopAt != null) {
+            sleepJob = lifecycleScope.launch {
+                delay(stopAt - SystemClock.elapsedRealtime())
+                Log.i(LOG_TAG, "The sleep timer ran out, so playback stopped.")
+                sleepTimer = SleepTimer.OFF
+                if (playback != null) leavePlayback()
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ keys
 
     /**
@@ -1910,6 +2198,28 @@ class MainActivity : ComponentActivity() {
         val command = heldKeys
             .command(action, event.repeatCount, event.eventTime, event.downTime)
             ?: return true
+
+        // The up-next row owns the remote while it is up. `Left` and `Right` move along it,
+        // `OK` plays, and `BACK`, `Down` and `Up` close it. Every other key is kept, so a
+        // press meant for the row cannot seek the video behind it.
+        upNext?.let { row ->
+            if (command.action == PlayerAction.NONE) return super.dispatchKeyEvent(event)
+            when (command.action) {
+                PlayerAction.SEEK_BACK -> upNext = row.moved(right = false)
+                PlayerAction.SEEK_FORWARD -> upNext = row.moved(right = true)
+                PlayerAction.TOGGLE_PLAY, PlayerAction.PLAY -> row.current?.let { chosen ->
+                    Log.i(LOG_TAG, "Up next: the household chose ${chosen.videoId}.")
+                    show(chosen, playFromStart = false, pauseOnStart = false, model = current.model)
+                    cancelCountdown()
+                }
+                PlayerAction.LEAVE, PlayerAction.UP_NEXT, PlayerAction.BIG_SEEK_FORWARD -> {
+                    upNext = null
+                    if (command.action == PlayerAction.LEAVE) lastBackAtMillis = SystemClock.elapsedRealtime()
+                }
+                else -> Unit
+            }
+            return true
+        }
 
         // Every key the player keeps brings the title and the position back on screen. With
         // `controls=0` there is nothing else to say what just happened.
@@ -1960,6 +2270,18 @@ class MainActivity : ComponentActivity() {
             -> if (!counting) current.controller.seekBy(command.seekSeconds)
             PlayerAction.NEXT_VIDEO -> stepVideo(PlayStep.NEXT)
             PlayerAction.PREVIOUS_VIDEO -> stepVideo(PlayStep.PREVIOUS)
+            // The row is built from the Source screen's own list, which is already in the
+            // Source's Direction. Not during a countdown: the cover is over the picture then,
+            // and the rocker already walks the Source behind it.
+            PlayerAction.UP_NEXT -> if (!counting) {
+                val videos = upNextVideos(current.model.ready()?.videos.orEmpty(), current.video.videoId)
+                if (videos.isEmpty()) {
+                    say(UP_NEXT_EMPTY)
+                } else {
+                    Log.i(LOG_TAG, "Up next row opened after ${current.video.videoId}: ${videos.size} videos.")
+                    upNext = UpNextUi(videos, selected = 0)
+                }
+            }
             // Up to Android 14 this is the only route `BACK` takes. The time is written down
             // so that the same press arriving again through the back dispatcher, which is
             // what Android 15 and later do, is recognised as an echo. See [back].
@@ -1983,8 +2305,17 @@ class MainActivity : ComponentActivity() {
      * Android can stop this Activity with no key press ever arriving: the television switched
      * off at the remote, or `HOME` pressed, or another app taking the foreground.
      */
+    /** The app is on screen, so the phone may drive it. */
+    override fun onStart() {
+        super.onStart()
+        startRemote()
+    }
+
     override fun onStop() {
         super.onStop()
+        // The remote stops with the screen: a phone must not be able to start a video on a
+        // television that is showing something else.
+        stopRemote()
         // **The Key page is not stopped here, on purpose.** Creating a key takes about five
         // minutes on a phone or a computer, and the Google TV screensaver can stop this Activity
         // in that time. Stopping the page here would make the page already open in the browser
@@ -2036,6 +2367,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         stopKeyServer()
+        stopRemote()
         countdownJob?.cancel()
         refreshJob?.cancel()
         // The controller and not `playback?.controller`. One page now outlives one play, so
@@ -2048,6 +2380,9 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 }
+
+/** How long a play from the phone waits for a Source's list to name the video. */
+private const val REMOTE_PLAY_WAIT_MILLIS = 20_000L
 
 /** The seam every later screen hangs on. Colours come from res/values/colors.xml. */
 @OptIn(ExperimentalTvMaterial3Api::class)

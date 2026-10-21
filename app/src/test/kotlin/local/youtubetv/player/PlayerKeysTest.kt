@@ -50,11 +50,12 @@ class PlayerKeysTest {
     }
 
     @Test
-    fun `up seeks forward five minutes and down seeks back five minutes`() {
-        // 19 and 20. The owner chose this on 2026-09-20 over doing nothing and over a detail
-        // panel. Neither key changes the video any more.
+    fun `up seeks forward five minutes and down opens the up-next row`() {
+        // 19 and 20. Up kept the five minute jump the owner chose on 2026-09-20. Down became
+        // the up-next row on 2026-10-21, because it was the key everybody pressed looking for
+        // more videos.
         assertEquals(PlayerAction.BIG_SEEK_FORWARD, playerAction(KeyEvent.KEYCODE_DPAD_UP))
-        assertEquals(PlayerAction.BIG_SEEK_BACK, playerAction(KeyEvent.KEYCODE_DPAD_DOWN))
+        assertEquals(PlayerAction.UP_NEXT, playerAction(KeyEvent.KEYCODE_DPAD_DOWN))
         assertEquals(300, BIG_SEEK_STEP_SECONDS)
         assertTrue(playerKeepsKey(KeyEvent.KEYCODE_DPAD_UP))
         assertTrue(playerKeepsKey(KeyEvent.KEYCODE_DPAD_DOWN))

@@ -3,14 +3,20 @@ package local.youtubetv.player
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -18,12 +24,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -33,6 +41,8 @@ import kotlinx.coroutines.flow.first
 import local.youtubetv.data.StoredVideo
 import local.youtubetv.ui.Fonts
 import local.youtubetv.ui.Ink
+import local.youtubetv.ui.NoThumbnails
+import local.youtubetv.ui.ThumbnailLoader
 import local.youtubetv.ui.exactDate
 import local.youtubetv.ui.screenInk
 
@@ -88,6 +98,8 @@ data class PlayerNotice(val seq: Long, val message: String)
  * @param notice one short sentence, such as the answer to a press of next on the last video.
  * @param endOfSource true when the Source has run out and playback has stopped. Spec section
  *   8.6 asks for a plain message and no wrap-around.
+ * @param upNext the row of videos after this one, or null when it is not up. The Activity
+ *   owns it, because it owns every key; the screen only draws it.
  */
 @Composable
 fun PlayerScreen(
@@ -98,6 +110,8 @@ fun PlayerScreen(
     covered: Boolean = false,
     notice: PlayerNotice? = null,
     endOfSource: Boolean = false,
+    upNext: UpNextUi? = null,
+    thumbnails: ThumbnailLoader = NoThumbnails,
     modifier: Modifier = Modifier,
 ) {
     val ink = screenInk()
@@ -169,9 +183,10 @@ fun PlayerScreen(
         }
 
         // Nothing is drawn over the video while the cover is up, because the cover is what
-        // the household is looking at and the video behind it is not on screen.
+        // the household is looking at and the video behind it is not on screen. The up-next
+        // row takes the transport's place while it is up: both sit on the bottom edge.
         AnimatedVisibility(
-            visible = transportVisible && state.errorReason == null && !wallIsCovered,
+            visible = transportVisible && state.errorReason == null && !wallIsCovered && upNext == null,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.BottomStart),
@@ -182,6 +197,15 @@ fun PlayerScreen(
                 durationSeconds = state.durationSeconds,
                 playing = state.playing,
                 ink = ink,
+            )
+        }
+
+        if (upNext != null && state.errorReason == null && !wallIsCovered) {
+            UpNextRow(
+                row = upNext,
+                thumbnails = thumbnails,
+                ink = ink,
+                modifier = Modifier.align(Alignment.BottomStart),
             )
         }
 
@@ -329,6 +353,79 @@ private fun HandoverCover(ink: Ink, countdown: CountdownUi?) {
                 color = ink.onSurfaceFaint,
                 style = Fonts.Meta,
                 maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * The up-next row: the next few videos of the Source, over the bottom of the picture.
+ *
+ * It draws and nothing more. `Left`, `Right`, `OK` and `BACK` are the Activity's, like every
+ * key in the player. The highlighted card carries the same accent border a grid card does, so
+ * it reads as "the one OK will play" from across the room.
+ */
+@Composable
+private fun UpNextRow(row: UpNextUi, thumbnails: ThumbnailLoader, ink: Ink, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(ink.badgeScrim)
+            .padding(horizontal = 48.dp, vertical = 20.dp),
+    ) {
+        Text(text = UP_NEXT_TITLE, color = ink.onSurfaceMuted, style = Fonts.Meta, maxLines = 1)
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            row.videos.forEachIndexed { index, video ->
+                val selected = index == row.selected
+                Column(
+                    modifier = Modifier
+                        .width(272.dp)
+                        .background(
+                            color = if (selected) ink.focusFill else Color.Transparent,
+                            shape = RoundedCornerShape(12.dp),
+                        )
+                        .border(
+                            width = 3.dp,
+                            color = if (selected) ink.accent else Color.Transparent,
+                            shape = RoundedCornerShape(12.dp),
+                        )
+                        .padding(8.dp),
+                ) {
+                    UpNextPicture(video, thumbnails, ink)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = video.title.ifBlank { video.videoId },
+                        color = if (selected) ink.onSurface else ink.onSurfaceMuted,
+                        style = Fonts.Meta,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpNextPicture(video: StoredVideo, thumbnails: ThumbnailLoader, ink: Ink) {
+    val ready = thumbnails.cached(video.videoId)
+    val picture by produceState(ready, video.videoId) {
+        if (value == null) value = thumbnails.load(video.videoId, video.thumbnailUrl)
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(8.dp))
+            .background(ink.thumbnailPlaceholder),
+    ) {
+        picture?.let { bitmap ->
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
             )
         }
     }

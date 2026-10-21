@@ -40,6 +40,15 @@ enum class PlayerAction {
     /** On [BIG_SEEK_STEP_SECONDS], five minutes. `DPAD_UP`. */
     BIG_SEEK_FORWARD,
 
+    /**
+     * Opens the up-next row over the bottom of the picture. `DPAD_DOWN`, since 2026-10-21.
+     *
+     * It was [BIG_SEEK_BACK] until then. Every household member pressed `Down` looking for
+     * more videos and got a five minute jump back, so `Down` now shows the videos. A held
+     * `Left` still reaches a minute a jump, which is the way back over a long distance.
+     */
+    UP_NEXT,
+
     /** `BACK`. Save the position, leave, and focus the video just played. */
     LEAVE,
 
@@ -117,7 +126,7 @@ fun playerAction(keyCode: Int): PlayerAction = when (keyCode) {
     -> PlayerAction.SEEK_FORWARD
 
     KeyEvent.KEYCODE_DPAD_UP -> PlayerAction.BIG_SEEK_FORWARD
-    KeyEvent.KEYCODE_DPAD_DOWN -> PlayerAction.BIG_SEEK_BACK
+    KeyEvent.KEYCODE_DPAD_DOWN -> PlayerAction.UP_NEXT
 
     KeyEvent.KEYCODE_CHANNEL_UP,
     KeyEvent.KEYCODE_MEDIA_NEXT,

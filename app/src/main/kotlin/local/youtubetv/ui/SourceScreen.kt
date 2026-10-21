@@ -228,6 +228,8 @@ fun SourceScreen(
     // One logcat line per chip press. Direction, Next unwatched and Last played are rules and
     // not pictures, so this is what proves them on the television.
     onLanding: (String) -> Unit = {},
+    // Child mode: no card menu and no chip row. See `ui/ChildMode.kt`.
+    childMode: Boolean = false,
     // Bumped by the Activity when the household comes back from the player. The grid lost its
     // highlight to whatever had focus while the video was on, so it asks for it again on the
     // card it left, which is the video just played.
@@ -1015,6 +1017,7 @@ fun SourceScreen(
                 ink = ink,
                 sourceName = sourceName,
                 header = header,
+                showChips = !childMode,
                 // Empty while a chip holds the highlight, because then no video is selected.
                 // Spec section 7.2, amended by ticket 16.
                 // The one chip with words of its own on this line. Build ticket 69, rule 11.
@@ -1181,7 +1184,7 @@ fun SourceScreen(
                                 onSelect = { video ->
                                     onPlay(video, false, shuffleOn && video.videoId == shuffleArmed)
                                 },
-                                onHold = { index -> setMenu(CardMenu.Top(index)) },
+                                onHold = { index -> if (!childMode) setMenu(CardMenu.Top(index)) },
                             )
                         }
                     }
@@ -1322,6 +1325,8 @@ private fun SourceHeader(
     ink: Ink,
     sourceName: String,
     header: HeaderLine,
+    // False in child mode: the chips are not drawn, so nothing above the grid takes focus.
+    showChips: Boolean,
     focusedTitle: () -> String?,
     focusedWatchDate: () -> String?,
     direction: Direction,
@@ -1393,7 +1398,7 @@ private fun SourceHeader(
         Spacer(Modifier.height(8.dp))
         FocusedTitleLine(ink = ink, title = focusedTitle, watchDate = focusedWatchDate)
         Spacer(Modifier.height(10.dp))
-        Row(
+        if (showChips) Row(
             // **`Down` is answered here, not left to Compose.** Compose's focus search would
             // hand the highlight to whichever card happens to be under the chip, which is a
             // card from wherever the grid is scrolled to. The household is always taken to the

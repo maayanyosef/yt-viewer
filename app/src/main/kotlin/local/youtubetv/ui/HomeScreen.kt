@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -120,6 +121,13 @@ fun HomeScreen(
     // with `OK` or with `Left` and `Right`.
     videoQuality: VideoQuality = VideoQuality.AUTO,
     onSetVideoQuality: (VideoQuality) -> Unit = {},
+    // The phone remote's address, or null when the television is on no home network. Drawn as
+    // a QR code when the `Phone remote` line is chosen.
+    remoteAddress: String? = null,
+    // Child mode. See `ui/ChildMode.kt`. The rail's cards need a four second hold for their
+    // menu while it is on, and the menu's line turns it off again.
+    childMode: Boolean = false,
+    onSetChildMode: (Boolean) -> Unit = {},
     // One logcat line per rail action. The rail's order and its landings are rules rather than
     // pictures, so this is what proves them without a screenshot.
     onAction: (String) -> Unit = {},
@@ -165,6 +173,9 @@ fun HomeScreen(
     // the same panel over the same scrim, so the kind travels with the Source id rather than
     // being guessed from which of two nullable fields happens to be set.
     var confirm by remember { mutableStateOf<Confirmation?>(null) }
+
+    // Whether the phone remote's QR code is up. It is a third state of the same overlay.
+    var remoteShown by remember { mutableStateOf(false) }
 
     // Bumped whenever something that covered the rail goes away. Without it the highlight is
     // simply gone when a menu closes, because the card lost focus to the menu and nothing gave
@@ -288,12 +299,19 @@ fun HomeScreen(
         if (cards.none { it.sourceId == open }) closeMenu()
     }
 
-    BackHandler(enabled = menuFor != null || confirm != null) {
+    BackHandler(enabled = menuFor != null || confirm != null || remoteShown) {
         // `BACK` inside the confirmation returns to the menu, never straight to the rail, the
         // same way `BACK` inside a card submenu returns to its two top lines. Spec section 7.3
         // settled that shape and this menu follows it.
         val open = confirm
-        if (open != null) backToMenu(open.sourceId) else closeMenu()
+        when {
+            remoteShown -> {
+                remoteShown = false
+                closeMenu()
+            }
+            open != null -> backToMenu(open.sourceId)
+            else -> closeMenu()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(ink.surface)) {
@@ -354,6 +372,7 @@ fun HomeScreen(
                     onHold = { card -> menuFor = card.sourceId },
                     onAddSource = onAddSource,
                     thumbnails = thumbnails,
+                    holdAfterRepeats = if (childMode) CHILD_MODE_HOLD_REPEATS else 1,
                 )
             }
         }
@@ -370,6 +389,7 @@ fun HomeScreen(
         val refuse = { open?.sourceId?.let { backToMenu(it) } ?: closeMenu() }
 
         when {
+            remoteShown -> PhoneRemoteOverlay(ink = ink, address = remoteAddress)
             confirmCard != null && open?.kind == ConfirmKind.REMOVE -> ConfirmRemove(
                 card = confirmCard,
                 ink = ink,
@@ -401,6 +421,7 @@ fun HomeScreen(
                 card = menuCard,
                 ink = ink,
                 videoQuality = videoQuality,
+                childMode = childMode,
                 // `Left` and `Right` on the `Video quality` line change it where it stands. The
                 // menu stays open and the line redraws with the new setting.
                 onStepVideoQuality = { right ->
@@ -465,6 +486,22 @@ fun HomeScreen(
                         SourceMenuAction.API_KEY -> {
                             closeMenu()
                             onApiKey()
+                        }
+                        SourceMenuAction.CHILD_MODE -> {
+                            closeMenu()
+                            val on = !childMode
+                            onSetChildMode(on)
+                            say(if (on) CHILD_MODE_ON_SAID else CHILD_MODE_OFF_SAID)
+                            onAction("Child mode is now ${if (on) "on" else "off"}.")
+                        }
+                        SourceMenuAction.PHONE_REMOTE -> {
+                            // The menu's line hands the highlight back first, as every close
+                            // does, and the QR panel takes the screen. It has nothing to focus:
+                            // `BACK` is its only key.
+                            handHighlightBack()
+                            menuFor = null
+                            remoteShown = true
+                            onAction("The phone remote's QR code is shown.")
                         }
                     }
                 },
@@ -791,6 +828,8 @@ private fun SourceRail(
     onHold: (SourceCard) -> Unit,
     onAddSource: () -> Unit,
     thumbnails: ThumbnailLoader,
+    // How long a hold opens a card's menu. See [CHILD_MODE_HOLD_REPEATS].
+    holdAfterRepeats: Int = 1,
 ) {
     val railState = rememberLazyListState()
 
@@ -959,6 +998,7 @@ private fun SourceRail(
                     },
                     onSelect = { onSelect(card) },
                     onHold = { onHold(card) },
+                    holdAfterRepeats = holdAfterRepeats,
                 )
             }
             // Pinned at the end, which spec section 7.1 asks for: the household works along the
@@ -1054,6 +1094,7 @@ private fun RailCard(
     onHighlightChanged: (Boolean) -> Unit,
     onSelect: () -> Unit,
     onHold: () -> Unit,
+    holdAfterRepeats: Int = 1,
 ) {
     var focused by remember { mutableStateOf(false) }
     val requester = remember { FocusRequester() }
@@ -1088,7 +1129,7 @@ private fun RailCard(
             }
             .then(
                 if (enabled) {
-                    Modifier.onSelectOrHoldKey(onSelect = onSelect, onHold = onHold)
+                    Modifier.onSelectOrHoldKey(onSelect = onSelect, onHold = onHold, holdAfterRepeats = holdAfterRepeats)
                 } else {
                     // Every key but `BACK`, and swallowed rather than acted on. See [enabled].
                     //
@@ -1425,11 +1466,12 @@ private fun SourceMenuOverlay(
     card: SourceCard,
     ink: Ink,
     videoQuality: VideoQuality,
+    childMode: Boolean,
     onStepVideoQuality: (right: Boolean) -> Unit,
     onChoose: (SourceMenuLine) -> Unit,
 ) {
-    val lines = remember(card, videoQuality) {
-        sourceMenuLines(card, card.everythingUnwatchedCount, videoQuality)
+    val lines = remember(card, videoQuality, childMode) {
+        sourceMenuLines(card, card.everythingUnwatchedCount, videoQuality, childMode)
     }
     MenuPanel(
         title = railCardName(card),
@@ -1446,6 +1488,42 @@ private fun SourceMenuOverlay(
             }
         },
     )
+}
+
+/**
+ * The phone remote's QR code over the rail. Nothing on it is focusable; `BACK` closes it.
+ *
+ * Black on white whatever the app's colours, like the key screen's code, because that is what
+ * a phone camera reads best from across a room.
+ */
+@Composable
+private fun PhoneRemoteOverlay(ink: Ink, address: String?) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(ink.menuScrim),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            modifier = Modifier
+                .background(ink.surfaceRaised, RoundedCornerShape(14.dp))
+                .padding(28.dp),
+            horizontalArrangement = Arrangement.spacedBy(28.dp),
+        ) {
+            Column(modifier = Modifier.width(460.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(text = PHONE_REMOTE_TITLE, color = ink.onSurface, style = Fonts.FocusedTitle, maxLines = 2)
+                Text(
+                    text = if (address == null) PHONE_REMOTE_NO_NETWORK else PHONE_REMOTE_LEAD,
+                    color = ink.onSurfaceMuted,
+                    style = Fonts.Body,
+                    maxLines = 6,
+                )
+                address?.let { Text(text = it, color = ink.onSurface, style = Fonts.Meta, maxLines = 1) }
+                Text(text = PHONE_REMOTE_WAY_OUT, color = ink.onSurfaceFaint, style = Fonts.Meta, maxLines = 1)
+            }
+            address?.let { url ->
+                QrCodeImage(text = url, modifier = Modifier.align(Alignment.CenterVertically).size(300.dp))
+            }
+        }
+    }
 }
 
 /**

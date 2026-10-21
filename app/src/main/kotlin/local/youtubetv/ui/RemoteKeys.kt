@@ -66,8 +66,11 @@ enum class SelectGesture {
  *   A line that acted on it would choose itself the instant the menu appeared.
  *
  * One instance per focusable element, remembered for as long as the element lives.
+ *
+ * @param holdAfterRepeats how many repeats make a hold. One is the normal hold, about 400 ms.
+ *   Child mode asks a rail card for [CHILD_MODE_HOLD_REPEATS], about four seconds.
  */
-class SelectKeyGesture {
+class SelectKeyGesture(private val holdAfterRepeats: Int = 1) {
 
     private var pressed = false
     private var holdFired = false
@@ -85,7 +88,7 @@ class SelectKeyGesture {
             return SelectGesture.NONE
         }
         if (holdFired || !pressed) return SelectGesture.NONE
-        if (!isHeld(repeatCount)) return SelectGesture.NONE
+        if (repeatCount < holdAfterRepeats) return SelectGesture.NONE
         holdFired = true
         return SelectGesture.HOLD
     }
@@ -107,8 +110,12 @@ class SelectKeyGesture {
  * does nothing either. Both of those happen on a video card.
  */
 @Composable
-fun Modifier.onSelectOrHoldKey(onSelect: () -> Unit, onHold: () -> Unit): Modifier {
-    val gesture = remember { SelectKeyGesture() }
+fun Modifier.onSelectOrHoldKey(
+    onSelect: () -> Unit,
+    onHold: () -> Unit,
+    holdAfterRepeats: Int = 1,
+): Modifier {
+    val gesture = remember(holdAfterRepeats) { SelectKeyGesture(holdAfterRepeats) }
     return this.onKeyEvent { event ->
         if (!isSelectKey(event)) return@onKeyEvent false
         val meaning = when (event.type) {
