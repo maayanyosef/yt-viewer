@@ -57,7 +57,32 @@ private const val CONNECT_TIMEOUT_MS = 10_000
 private const val READ_TIMEOUT_MS = 15_000
 
 /** About 40 cards' worth of pictures at the size below. Scrolling back is then instant. */
-private const val CACHE_BYTES = 24 * 1024 * 1024
+const val CACHE_BYTES = 24 * 1024 * 1024
+
+/**
+ * The cache on a television with little memory: about a dozen cards, one screen of the grid.
+ *
+ * Scrolling a Source of two thousand videos fills the whole 24 MB long before a video is
+ * played, and the Source screen stays composed under the player, so that memory sits there
+ * for the whole video. On a television with little memory it competes with the player's own
+ * decoder and renderer.
+ */
+const val LOW_RAM_CACHE_BYTES = 8 * 1024 * 1024
+
+/** What the cache keeps while a video plays: the cards around the one the household left. */
+const val PLAYBACK_CACHE_BYTES = 4 * 1024 * 1024
+
+/**
+ * How big the picture cache may grow on this device.
+ *
+ * @param memoryClassMb `ActivityManager.memoryClass`, the heap this app may use.
+ * @param lowRamDevice `ActivityManager.isLowRamDevice`.
+ */
+fun thumbnailCacheBytes(memoryClassMb: Int, lowRamDevice: Boolean): Int =
+    if (lowRamDevice || memoryClassMb <= LOW_RAM_MEMORY_CLASS_MB) LOW_RAM_CACHE_BYTES else CACHE_BYTES
+
+/** A heap this size or smaller is a low-memory television, whatever it says of itself. */
+const val LOW_RAM_MEMORY_CLASS_MB = 192
 
 /**
  * How wide a decoded thumbnail is kept, in pixels.
@@ -95,9 +120,9 @@ private enum class Attempt {
  * offline often enough that remembering those would leave every card a dark tile until the app
  * was killed, and a stored Source stays browsable offline on purpose. See spec section 5.4.
  */
-class HttpThumbnailLoader : ThumbnailLoader {
+class HttpThumbnailLoader(private val cacheBytes: Int = CACHE_BYTES) : ThumbnailLoader {
 
-    private val cache = object : LruCache<String, ImageBitmap>(CACHE_BYTES) {
+    private val cache = object : LruCache<String, ImageBitmap>(cacheBytes) {
         // Measured in bytes, so the cap is a real memory cap and not a count of pictures.
         override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
     }
@@ -108,6 +133,19 @@ class HttpThumbnailLoader : ThumbnailLoader {
     private val downloads = Semaphore(PARALLEL_DOWNLOADS)
 
     override fun cached(videoId: String): ImageBitmap? = cache.get(videoId)
+
+    /**
+     * A video is starting, so most of the pictures go. The most recently drawn stay, so the
+     * cards around the one the household comes back to are drawn at once.
+     */
+    fun trimForPlayback() {
+        cache.trimToSize(minOf(PLAYBACK_CACHE_BYTES, cacheBytes))
+    }
+
+    /** Android is short of memory. Every picture goes, and the grid asks again as it draws. */
+    fun clear() {
+        cache.evictAll()
+    }
 
     override suspend fun load(videoId: String, storedUrl: String?): ImageBitmap? {
         cache.get(videoId)?.let { return it }

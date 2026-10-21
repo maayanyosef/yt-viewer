@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -21,13 +22,33 @@ import android.webkit.WebViewClient
  *
  * @param onEvent called on the main thread, because the bridge is called on a WebView thread
  *   of its own and everything downstream of it touches Compose state.
+ * @param quality the cap on the picture YouTube may pick. Read once, when the page is built,
+ *   so a change on the menu applies from the next play.
+ * @param onRendererGone called on the main thread when Android killed the page's renderer to
+ *   free memory, or it crashed. The page is dead from then on and has to be thrown away.
  */
 class PlayerController(
     context: Context,
     private val language: String = PLAYER_LANGUAGE,
+    private val quality: VideoQuality = VideoQuality.AUTO,
     private val onEvent: (PlayerEvent) -> Unit,
     private val log: (String) -> Unit = {},
+    private val onRendererGone: () -> Unit = {},
 ) {
+
+    /**
+     * The player's size for [quality], from the screen's own measurements.
+     *
+     * The WebView's `devicePixelRatio` is the display density, and its viewport is the
+     * screen in dp, because the player is drawn full screen.
+     */
+    private val cappedSize: Pair<Int, Int>? = context.resources.displayMetrics.let { metrics ->
+        cappedPlayerSize(
+            maxHeight = quality.maxHeight,
+            devicePixelRatio = metrics.density.toDouble(),
+            viewportHeight = Math.round(metrics.heightPixels / metrics.density),
+        )
+    }
 
     /** What the household is waiting to see, held until the player says it is ready. */
     private var pending: Load? = null
@@ -73,7 +94,25 @@ class PlayerController(
         // The default is true, which would block autoplay with no pointer on the screen.
         settings.mediaPlaybackRequiresUserGesture = false
 
-        webViewClient = WebViewClient()
+        // A television with little memory is where Android kills a renderer first. Asking for
+        // `IMPORTANT`, and keeping it while the app is in the background is not asked for,
+        // makes the player's renderer one of the last things freed while it is on screen.
+        setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
+
+        webViewClient = object : WebViewClient() {
+            // Without this override a killed renderer takes the whole app down with it, which
+            // on the television reads as the video freezing and the app vanishing. Answering
+            // true keeps the app alive. The WebView is unusable after this, so it is handed
+            // back to the Activity to throw away.
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                log(
+                    "The player's renderer is gone: " +
+                        if (detail.didCrash()) "it crashed." else "Android freed it for memory.",
+                )
+                view.post { onRendererGone() }
+                return true
+            }
+        }
         webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(message: ConsoleMessage): Boolean {
                 // Kept, and quiet. The player is the one part of this app whose failures are
@@ -84,11 +123,13 @@ class PlayerController(
         }
         addJavascriptInterface(Bridge(), PlayerHtml.BRIDGE)
 
+        log("Player page built with video quality ${quality.label}, player size ${cappedSize ?: "full screen"}.")
+
         // loadDataWithBaseURL, never loadData: the base URL becomes window.origin and is sent
         // as the Referer for the player iframe. Without it the player answers error 153.
         loadDataWithBaseURL(
             PlayerHtml.BASE_URL,
-            PlayerHtml.build(hl = language),
+            PlayerHtml.build(hl = language, cappedSize = cappedSize),
             "text/html",
             "UTF-8",
             null,

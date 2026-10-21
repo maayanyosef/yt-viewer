@@ -3,6 +3,8 @@ package local.youtubetv.ui
 import java.time.ZoneId
 import local.youtubetv.data.Direction
 import local.youtubetv.data.SourceCard
+import local.youtubetv.player.VideoQuality
+import local.youtubetv.player.videoQualityLine
 
 /**
  * Every string the home rail puts on the television, and the one picture it puts there.
@@ -230,6 +232,12 @@ enum class SourceMenuAction {
     REMOVE,
     MARK_EVERYTHING_UNWATCHED,
 
+    /**
+     * Moves the player's quality cap on to the next setting. About the app, not this Source,
+     * exactly like [API_KEY]. See `player/VideoQuality.kt`.
+     */
+    VIDEO_QUALITY,
+
     /** Opens the key screen. Build ticket 64. It is about the app, not about this Source. */
     API_KEY,
 }
@@ -335,7 +343,11 @@ const val MARK_EVERYTHING_UNWATCHED = "Mark everything unwatched"
  * @param everythingUnwatchedCount how many videos `Mark everything unwatched` would reach, or
  *   null when it can reach none and the line is dim.
  */
-fun sourceMenuLines(card: SourceCard, everythingUnwatchedCount: Int?): List<SourceMenuLine> =
+fun sourceMenuLines(
+    card: SourceCard,
+    everythingUnwatchedCount: Int?,
+    videoQuality: VideoQuality = VideoQuality.AUTO,
+): List<SourceMenuLine> =
     listOf(
         SourceMenuLine(
             SourceMenuAction.OPEN_AT_NEXT_UNWATCHED,
@@ -375,6 +387,13 @@ fun sourceMenuLines(card: SourceCard, everythingUnwatchedCount: Int?): List<Sour
         ),
         // Build ticket 64. Second to last, so `Mark everything unwatched` keeps the last place
         // ticket 10 gave it. A slip past `Remove` lands here, which only opens a screen.
+        // Next to `API key`, the other line about the whole app. It says the setting it is on,
+        // so the household knows where a press will move it from.
+        SourceMenuLine(
+            SourceMenuAction.VIDEO_QUALITY,
+            videoQualityLine(videoQuality),
+            enabled = true,
+        ),
         SourceMenuLine(SourceMenuAction.API_KEY, API_KEY_LINE, enabled = true),
         SourceMenuLine(
             SourceMenuAction.MARK_EVERYTHING_UNWATCHED,

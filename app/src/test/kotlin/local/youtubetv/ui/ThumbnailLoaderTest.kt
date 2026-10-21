@@ -37,3 +37,23 @@ class ThumbnailLoaderTest {
         assertEquals(1, sampleSizeFor(0))
     }
 }
+
+/** How big the picture cache may grow, from what Android says about the device. */
+class ThumbnailCacheBytesTest {
+
+    @Test
+    fun `a television with a small heap keeps a small cache`() {
+        assertEquals(LOW_RAM_CACHE_BYTES, thumbnailCacheBytes(memoryClassMb = 128, lowRamDevice = false))
+        assertEquals(LOW_RAM_CACHE_BYTES, thumbnailCacheBytes(memoryClassMb = 192, lowRamDevice = false))
+    }
+
+    @Test
+    fun `a device that says it is low on RAM keeps a small cache whatever its heap`() {
+        assertEquals(LOW_RAM_CACHE_BYTES, thumbnailCacheBytes(memoryClassMb = 512, lowRamDevice = true))
+    }
+
+    @Test
+    fun `a television with room keeps the full cache`() {
+        assertEquals(CACHE_BYTES, thumbnailCacheBytes(memoryClassMb = 256, lowRamDevice = false))
+    }
+}

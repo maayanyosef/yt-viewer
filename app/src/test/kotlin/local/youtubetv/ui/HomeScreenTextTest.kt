@@ -5,6 +5,7 @@ import local.youtubetv.data.Direction
 import local.youtubetv.data.SourceCard
 import local.youtubetv.data.StoredVideo
 import local.youtubetv.data.testVideo
+import local.youtubetv.player.VideoQuality
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -337,6 +338,7 @@ class SourceMenuLinesTest {
                 SourceMenuAction.REFRESH,
                 SourceMenuAction.RENAME,
                 SourceMenuAction.REMOVE,
+                SourceMenuAction.VIDEO_QUALITY,
                 SourceMenuAction.API_KEY,
                 SourceMenuAction.MARK_EVERYTHING_UNWATCHED,
             ),
@@ -408,9 +410,11 @@ class SourceMenuLinesTest {
         // `Remove` is live on a Source that has never been walked. Spec section 6.6 says so,
         // and a Source added by mistake is exactly the one a household wants off its rail.
         assertTrue(lines[5].enabled)
-        // `API key: replace or remove` is live on every Source. Build ticket 64.
+        // `Video quality` and `API key: replace or remove` are about the app, so they are live
+        // on every Source. Build ticket 64 for the key.
         assertTrue(lines[6].enabled)
-        assertFalse(lines[7].enabled)
+        assertTrue(lines[7].enabled)
+        assertFalse(lines[8].enabled)
     }
 
     /**
@@ -436,18 +440,19 @@ class SourceMenuLinesTest {
     }
 
     /**
-     * The menu is eight lines now, and nothing may quietly grow it again. Build ticket 64 added
-     * the eighth, `API key: replace or remove`, on purpose and above the last line.
+     * The menu is nine lines now, and nothing may quietly grow it again. Build ticket 64 added
+     * the eighth, `API key: replace or remove`, on purpose and above the last line. The
+     * `Video quality` line is the ninth, above `API key`, the other line about the whole app.
      *
      * The count is asserted on its own because the panel's whole D-pad walk is derived from
      * the dim flags of these lines, and because `Mark everything unwatched` must stay last:
      * that is the one line whose place ticket 10 fixed and every ticket since has kept.
      */
     @Test
-    fun `the menu holds eight lines and the destructive one is still last`() {
+    fun `the menu holds nine lines and the destructive one is still last`() {
         val lines = sourceMenuLines(card(lastPlayedVideoId = "v9"), everythingUnwatchedCount = 10)
 
-        assertEquals(8, lines.size)
+        assertEquals(9, lines.size)
         assertEquals(SourceMenuAction.MARK_EVERYTHING_UNWATCHED, lines.last().action)
     }
 
@@ -460,15 +465,15 @@ class SourceMenuLinesTest {
      * list of flags, so the walk and the menu cannot drift apart.
      */
     @Test
-    fun `the D-pad walks all eight lines of a walked Source, and stops at both ends`() {
+    fun `the D-pad walks all nine lines of a walked Source, and stops at both ends`() {
         val live = sourceMenuLines(card(lastPlayedVideoId = "v9"), everythingUnwatchedCount = 10)
             .map { it.enabled }
 
         val down = generateSequence(0) { menuNeighbour(live, it, MenuMove.DOWN) }.toList()
-        val up = generateSequence(7) { menuNeighbour(live, it, MenuMove.UP) }.toList()
+        val up = generateSequence(8) { menuNeighbour(live, it, MenuMove.UP) }.toList()
 
-        assertEquals(listOf(0, 1, 2, 3, 4, 5, 6, 7), down)
-        assertEquals(listOf(7, 6, 5, 4, 3, 2, 1, 0), up)
+        assertEquals(listOf(0, 1, 2, 3, 4, 5, 6, 7, 8), down)
+        assertEquals(listOf(8, 7, 6, 5, 4, 3, 2, 1, 0), up)
     }
 
     /**
@@ -483,13 +488,24 @@ class SourceMenuLinesTest {
         val fresh = card(walked = false, listedCount = 0, unwatchedCount = 0, nextUnwatched = null)
         val live = sourceMenuLines(fresh, everythingUnwatchedCount = null).map { it.enabled }
 
-        assertEquals(listOf(true, false, true, false, true, true, true, false), live)
+        assertEquals(listOf(true, false, true, false, true, true, true, true, false), live)
 
         val down = generateSequence(0) { menuNeighbour(live, it, MenuMove.DOWN) }.toList()
-        val up = generateSequence(6) { menuNeighbour(live, it, MenuMove.UP) }.toList()
+        val up = generateSequence(7) { menuNeighbour(live, it, MenuMove.UP) }.toList()
 
-        assertEquals(listOf(0, 2, 4, 5, 6), down)
-        assertEquals(listOf(6, 5, 4, 2, 0), up)
+        assertEquals(listOf(0, 2, 4, 5, 6, 7), down)
+        assertEquals(listOf(7, 6, 5, 4, 2, 0), up)
+    }
+
+    /** The `Video quality` line says the setting it is on, so a press is never a guess. */
+    @Test
+    fun `the Video quality line names the current setting`() {
+        val auto = sourceMenuLines(card(), everythingUnwatchedCount = 10)
+        val capped = sourceMenuLines(card(), 10, videoQuality = VideoQuality.P720)
+
+        assertEquals("Video quality: Auto ›", auto[6].label)
+        assertEquals("Video quality: ‹ 720p ›", capped[6].label)
+        assertTrue(capped[6].enabled)
     }
 
     /** Only one line of this menu is ever dim on a Source the household has actually walked. */

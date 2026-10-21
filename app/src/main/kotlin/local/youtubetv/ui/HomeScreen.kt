@@ -8,13 +8,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,8 +26,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -45,13 +45,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -61,6 +61,8 @@ import kotlinx.coroutines.delay
 import local.youtubetv.APP_NAME
 import local.youtubetv.data.Landing
 import local.youtubetv.data.SourceCard
+import local.youtubetv.player.VideoQuality
+import local.youtubetv.player.videoQualitySetLine
 
 /**
  * The home screen: one rail of Source cards, most recently played first.
@@ -114,6 +116,10 @@ fun HomeScreen(
     // `API key: replace or remove`, the last line of the Source menu. Opens the key screen.
     // Build ticket 64.
     onApiKey: () -> Unit = {},
+    // The cap the player puts on the picture, and what the `Video quality` line sets it to,
+    // with `OK` or with `Left` and `Right`.
+    videoQuality: VideoQuality = VideoQuality.AUTO,
+    onSetVideoQuality: (VideoQuality) -> Unit = {},
     // One logcat line per rail action. The rail's order and its landings are rules rather than
     // pictures, so this is what proves them without a screenshot.
     onAction: (String) -> Unit = {},
@@ -394,6 +400,16 @@ fun HomeScreen(
             menuCard != null -> SourceMenuOverlay(
                 card = menuCard,
                 ink = ink,
+                videoQuality = videoQuality,
+                // `Left` and `Right` on the `Video quality` line change it where it stands. The
+                // menu stays open and the line redraws with the new setting.
+                onStepVideoQuality = { right ->
+                    val now = videoQuality.step(right)
+                    if (now != videoQuality) {
+                        onSetVideoQuality(now)
+                        onAction("Video quality set to ${now.label} with ${if (right) "Right" else "Left"}.")
+                    }
+                },
                 onChoose = { line ->
                     when (line.action) {
                         SourceMenuAction.OPEN_AT_NEXT_UNWATCHED -> {
@@ -437,6 +453,15 @@ fun HomeScreen(
                             askFirst(menuCard.sourceId, ConfirmKind.REMOVE)
                         SourceMenuAction.MARK_EVERYTHING_UNWATCHED ->
                             askFirst(menuCard.sourceId, ConfirmKind.EVERYTHING_UNWATCHED)
+                        // `OK` keeps the setting `Left` and `Right` chose and closes the menu.
+                        // It used to step to the next setting, and on the Mi TV that wrapped a
+                        // chosen 480p straight back to Auto: `OK` is the key a household
+                        // presses to say "this one".
+                        SourceMenuAction.VIDEO_QUALITY -> {
+                            closeMenu()
+                            say(videoQualitySetLine(videoQuality))
+                            onAction("Video quality kept at ${videoQuality.label} with OK.")
+                        }
                         SourceMenuAction.API_KEY -> {
                             closeMenu()
                             onApiKey()
@@ -1399,15 +1424,27 @@ private fun ConfirmRemove(
 private fun SourceMenuOverlay(
     card: SourceCard,
     ink: Ink,
+    videoQuality: VideoQuality,
+    onStepVideoQuality: (right: Boolean) -> Unit,
     onChoose: (SourceMenuLine) -> Unit,
 ) {
-    val lines = remember(card) { sourceMenuLines(card, card.everythingUnwatchedCount) }
+    val lines = remember(card, videoQuality) {
+        sourceMenuLines(card, card.everythingUnwatchedCount, videoQuality)
+    }
     MenuPanel(
         title = railCardName(card),
         subtitle = MenuSubtitle.Meta(railCardMeta(card)),
         lines = lines.map { it.label to it.enabled },
         ink = ink,
         onChoose = { index -> onChoose(lines[index]) },
+        onSideways = { index, right ->
+            if (lines.getOrNull(index)?.action == SourceMenuAction.VIDEO_QUALITY) {
+                onStepVideoQuality(right)
+                true
+            } else {
+                false
+            }
+        },
     )
 }
 
@@ -1491,16 +1528,23 @@ private fun MenuPanel(
     lines: List<Pair<String, Boolean>>,
     ink: Ink,
     onChoose: (Int) -> Unit,
+    // `Left` or `Right` on the drawn line at the index. True when the line used the key, which
+    // a line that is a setting does. Every other line leaves it to the edge guard below.
+    onSideways: (index: Int, right: Boolean) -> Boolean = { _, _ -> false },
 ) {
-    // One requester per drawn line, so a line can name the line it means. Only a live line is
-    // ever given one: a dim line is not focusable, and a requester that reaches no focus target
-    // throws when anything asks it for focus.
-    val requesters = remember(title, lines) { List(lines.size) { FocusRequester() } }
-    val focusedLine = remember(title, lines) { mutableIntStateOf(0) }
-
     // One flag per drawn line, in the order the lines are drawn. This is what [menuNeighbour]
     // reads, and it is the only thing about the panel the rule needs.
     val live = remember(lines) { lines.map { it.second } }
+
+    // One requester per drawn line, so a line can name the line it means. Only a live line is
+    // ever given one: a dim line is not focusable, and a requester that reaches no focus target
+    // throws when anything asks it for focus.
+    //
+    // Keyed on the live flags and not on the labels. A line that is a setting changes its own
+    // label when `Left` or `Right` moves it, and a label change must not throw the highlight
+    // back to the first line. A change in which lines are live still starts again from the top.
+    val requesters = remember(title, live) { List(lines.size) { FocusRequester() } }
+    val focusedLine = remember(title, live) { mutableIntStateOf(0) }
 
     // The first line that can actually take focus. A dim line is skipped, so the retry below
     // does not ask a line that will never answer.
@@ -1527,7 +1571,7 @@ private fun MenuPanel(
 
     // The panel is useless until something in it has the highlight, and its lines have only
     // just been placed. The same retry the rail uses, for the same reason.
-    LaunchedEffect(title, lines) {
+    LaunchedEffect(title, live) {
         val line = firstLive ?: return@LaunchedEffect
         val target = requesters[line]
         askUntilHighlightHolds(
@@ -1547,6 +1591,10 @@ private fun MenuPanel(
             .background(ink.menuScrim)
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if (event.key == Key.DirectionLeft || event.key == Key.DirectionRight) {
+                    val right = event.key == Key.DirectionRight
+                    if (onSideways(focusedLine.intValue, right)) return@onPreviewKeyEvent true
+                }
                 val move = when (event.key) {
                     Key.DirectionUp -> MenuMove.UP
                     Key.DirectionDown -> MenuMove.DOWN

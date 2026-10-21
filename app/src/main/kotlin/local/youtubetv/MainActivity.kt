@@ -1,5 +1,7 @@
 package local.youtubetv
 
+import android.app.ActivityManager
+import android.content.ComponentCallbacks2
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
@@ -82,6 +84,8 @@ import local.youtubetv.player.PlayerEvent
 import local.youtubetv.player.PlayerNotice
 import local.youtubetv.player.PlayerScreen
 import local.youtubetv.player.UNATTENDED_LIMIT_SECONDS
+import local.youtubetv.player.VideoQuality
+import local.youtubetv.player.VideoQualityStore
 import local.youtubetv.player.afterVideo
 import local.youtubetv.player.coverMayComeDown
 import local.youtubetv.player.isUnattended
@@ -94,6 +98,7 @@ import local.youtubetv.ui.ApiKeyScreen
 import local.youtubetv.ui.HomeModel
 import local.youtubetv.ui.HomeScreen
 import local.youtubetv.ui.HttpThumbnailLoader
+import local.youtubetv.ui.thumbnailCacheBytes
 import local.youtubetv.ui.RenameSourceModel
 import local.youtubetv.ui.RenamedSource
 import local.youtubetv.ui.RenameSourceScreen
@@ -338,6 +343,18 @@ class MainActivity : ComponentActivity() {
      * callbacks that are nowhere near a composition.
      */
     private var playback by mutableStateOf<Playback?>(null)
+
+    /**
+     * One loader for the whole screen, so its picture cache survives every scroll. A field and
+     * not a local of [onCreate], because [onTrimMemory] and [startPlayback] shrink it.
+     */
+    private lateinit var thumbnails: HttpThumbnailLoader
+
+    /** Where the player's quality cap is kept. See `player/VideoQuality.kt`. */
+    private lateinit var videoQualityStore: VideoQualityStore
+
+    /** The cap the next page is built with, and what the menu line says. */
+    private var videoQuality by mutableStateOf(VideoQuality.AUTO)
 
     /** Bumped when the household comes back from the player, so the grid takes focus again. */
     private var returnedFromPlayer by mutableLongStateOf(0L)
@@ -683,8 +700,21 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        // One loader for the whole screen, so its picture cache survives every scroll.
-        val thumbnails = HttpThumbnailLoader()
+        // Sized for this device: a television with little memory keeps a smaller cache.
+        val activityManager = getSystemService(ActivityManager::class.java)
+        val cacheBytes = thumbnailCacheBytes(
+            memoryClassMb = activityManager.memoryClass,
+            lowRamDevice = activityManager.isLowRamDevice,
+        )
+        thumbnails = HttpThumbnailLoader(cacheBytes)
+        Log.i(
+            LOG_TAG,
+            "Thumbnail cache ${cacheBytes / (1024 * 1024)} MB: heap ${activityManager.memoryClass} MB, " +
+                "low-RAM device ${activityManager.isLowRamDevice}.",
+        )
+
+        videoQualityStore = VideoQualityStore(this)
+        videoQuality = videoQualityStore.read()
 
         setContent {
             YouTubeTvTheme {
@@ -804,6 +834,11 @@ class MainActivity : ComponentActivity() {
                             onRename = ::openRename,
                             // The last line of the menu. Build ticket 64.
                             onApiKey = ::openKeyScreen,
+                            videoQuality = videoQuality,
+                            onSetVideoQuality = { quality ->
+                                videoQuality = quality
+                                videoQualityStore.write(quality)
+                            },
                             // One `range` entry. On the Activity's scope and off the main
                             // thread, exactly like every other write to the household's log.
                             onMarkEverythingUnwatched = { card ->
@@ -1427,6 +1462,9 @@ class MainActivity : ComponentActivity() {
         // carries the Shuffle mark. Build ticket 69, rules 6 and 7.
         val shuffle = model.ready()?.shuffle == true
         if (shuffle) recordInShuffleRun(model, video)
+        // The grid's pictures are not on screen while the video plays, and a television with
+        // little memory needs that memory for the player.
+        thumbnails.trimForPlayback()
         Log.i(
             LOG_TAG,
             when {
@@ -1513,6 +1551,7 @@ class MainActivity : ComponentActivity() {
 
         val page = controller ?: PlayerController(
             context = this,
+            quality = videoQuality,
             // The session is read at the moment the event arrives, never captured. One page
             // now outlives many plays, so a captured session would go on taking the ticks of
             // whatever video came after it.
@@ -1526,6 +1565,13 @@ class MainActivity : ComponentActivity() {
                 playbackWrites.execute { currentSession?.onEvent(event) }
             },
             log = { line -> Log.i(LOG_TAG, line) },
+            // The page is dead. Leaving the player saves the position the last tick gave and
+            // puts the household back on the grid, where pressing the video again builds a
+            // new page. Without this the picture froze and the app went with it.
+            onRendererGone = {
+                Log.w(LOG_TAG, "Leaving the player because its renderer is gone.")
+                leavePlayback()
+            },
         ).also { controller = it }
 
         page.load(video.videoId, resumeFrom ?: 0, video.durationSeconds, pauseOnStart)
@@ -1974,6 +2020,18 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         playback?.controller?.resumeFromBackground()
         startRefreshTimer()
+    }
+
+    /**
+     * Android is short of memory. The pictures go first, because the grid can always ask
+     * for them again and the player cannot do without its memory.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            Log.i(LOG_TAG, "Memory is short (trim level $level). The picture cache is emptied.")
+            thumbnails.clear()
+        }
     }
 
     override fun onDestroy() {

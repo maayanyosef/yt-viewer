@@ -126,8 +126,8 @@ android {
             // nothing on the device.
             version = release(36)
         }
-        versionCode = 2
-        versionName = "0.2"
+        versionCode = 3
+        versionName = "0.3"
 
         // The instrumentation tests of `app/src/androidTest`. See `emulatorTest` below for the
         // task that runs them, and `docs/agents/testing.md` for what belongs in that source set.

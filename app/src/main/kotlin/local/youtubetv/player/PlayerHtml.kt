@@ -33,6 +33,12 @@ object PlayerHtml {
     /** The name the JavaScript bridge is injected under. */
     const val BRIDGE = "YTTV"
 
+    /**
+     * How much bigger than the screen the picture is drawn, so its broken top rows fall off the
+     * edge. Estimated from a photo of the Mi TV, 2026-10-21: the strip is about 1.5 percent of the height.
+     */
+    const val OVERSCAN = 1.04
+
     /** How often `getCurrentTime()` is polled. There is no progress event. Spec section 8.4. */
     const val POLL_MILLIS = 250
 
@@ -42,7 +48,7 @@ object PlayerHtml {
      * The parameters come from [playerVars] rather than being spelled out here, so a missing
      * one fails a JVM test instead of showing up as captions on the television.
      */
-    fun build(hl: String = PLAYER_LANGUAGE): String {
+    fun build(hl: String = PLAYER_LANGUAGE, cappedSize: Pair<Int, Int>? = null): String {
         val vars = JSONObject().apply {
             // A string that is only digits is put in as a number, because that is what the
             // IFrame API expects for every parameter but hl and cc_lang_pref.
@@ -56,10 +62,25 @@ object PlayerHtml {
             .replace("__PLAYER_VARS__", vars)
             .replace("__BRIDGE__", BRIDGE)
             .replace("__POLL_MILLIS__", POLL_MILLIS.toString())
+            .replace("__CAPPED_SIZE__", cappedSizeJs(cappedSize))
+            .replace("__OVERSCAN__", OVERSCAN.toString())
     }
 
     /**
-     * The page, with three placeholders.
+     * The player's size for a quality cap, as JavaScript, or `null` for no cap.
+     *
+     * See [VideoQuality] for why a cap is a size: YouTube picks the stream from the player's
+     * size, and nothing else in the IFrame API has worked since 2019.
+     */
+    fun cappedSizeJs(cappedSize: Pair<Int, Int>?): String =
+        if (cappedSize == null) {
+            "null"
+        } else {
+            "{\"w\":${cappedSize.first},\"h\":${cappedSize.second}}"
+        }
+
+    /**
+     * The page, with five placeholders.
      *
      * Placeholders and not Kotlin string interpolation, because the page is JavaScript and a
      * stray `$` in it would be read as an interpolation and fail the compile.
@@ -107,13 +128,49 @@ window.onerror = function (msg, src, line) {
   report('jsError', { msg: String(msg), line: line });
 };
 
+// The quality cap, as a size in CSS pixels, or null for none. See VideoQuality.kt.
+//
+// The iframe is laid out at this small size, so YouTube picks a stream no bigger than it, and
+// is then scaled up to fill the screen. A transform does not change the layout size, so the
+// player still sees the small one. Inline style, because the stylesheet's #player rule would
+// otherwise put the iframe straight back to the whole viewport.
+var cappedSize = __CAPPED_SIZE__;
+
+// How much bigger than the screen the picture is drawn, so its outermost rows fall off the
+// edges. On the Mi TV the top rows of every frame drawn in this WebView are broken blocks,
+// whatever the quality, and the official YouTube app on the same set shows none. Four
+// percent hides two percent at each edge, which is less than a television's own overscan.
+var OVERSCAN = __OVERSCAN__;
+
+function applyCap() {
+  if (!player) { return; }
+  var frame = safe(function () { return player.getIframe(); }, null);
+  if (!frame) { return; }
+  var vw = window.innerWidth;
+  var vh = window.innerHeight;
+  var w = cappedSize ? cappedSize.w : vw;
+  var h = cappedSize ? cappedSize.h : vh;
+  frame.style.width = w + 'px';
+  frame.style.height = h + 'px';
+  // Scaled from the top-left corner, then moved up and left by half of what the overscan
+  // adds, so the picture stays centred and the same amount falls off each edge.
+  frame.style.transformOrigin = '0 0';
+  frame.style.transform =
+    'translate(' + (-(OVERSCAN - 1) * vw / 2) + 'px,' + (-(OVERSCAN - 1) * vh / 2) + 'px) ' +
+    'scale(' + (vw / w * OVERSCAN) + ',' + (vh / h * OVERSCAN) + ')';
+}
+
+// The viewport is measured again if the WebView is resized, so the transform still fills it.
+window.addEventListener('resize', applyCap);
+
 function onYouTubeIframeAPIReady() {
   player = new YT.Player('player', {
-    width: '100%',
-    height: '100%',
+    width: cappedSize ? cappedSize.w : '100%',
+    height: cappedSize ? cappedSize.h : '100%',
     playerVars: __PLAYER_VARS__,
     events: {
       onReady: function () {
+        applyCap();
         report('ready', { origin: String(window.origin) });
         startPolling();
       },
@@ -133,6 +190,7 @@ function onYouTubeIframeAPIReady() {
       onAutoplayBlocked: function () { report('autoplayBlocked', {}); }
     }
   });
+  applyCap();
 }
 
 // What a caption track option says, in one word.
